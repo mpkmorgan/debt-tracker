@@ -1,0 +1,2433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OLA — Group Debt Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Playfair+Display:wght@700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --ink:#1a1a2e;--paper:#f4f1eb;--cream:#ede9df;--accent:#c9473b;
+  --gold:#b8860b;--green:#2d6a4f;--green-bg:#d8f3dc;--border:#ccc5b5;
+  --blue:#1e3a8a;--blue-light:#dbeafe;
+  --mono:'DM Mono',monospace;--serif:'Playfair Display',serif;--sans:'DM Sans',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);min-height:100vh;
+  background-image:repeating-linear-gradient(0deg,transparent,transparent 27px,rgba(180,170,150,.11) 28px);}
+
+/* HEADER */
+header{background:var(--ink);color:var(--paper);padding:15px 30px;display:flex;align-items:center;
+  gap:12px;border-bottom:3px solid var(--accent);position:sticky;top:0;z-index:200;}
+header h1{font-family:var(--serif);font-size:1.5rem;}
+.tagline{font-family:var(--mono);font-size:.62rem;color:#666;letter-spacing:2px;text-transform:uppercase;}
+.header-nav{margin-left:auto;display:flex;gap:4px;}
+.nav-btn{font-family:var(--mono);font-size:.68rem;letter-spacing:1px;padding:7px 13px;border-radius:4px;
+  border:none;cursor:pointer;background:transparent;color:#aaa;transition:all .15s;text-transform:uppercase;}
+.nav-btn:hover,.nav-btn.active{background:rgba(255,255,255,.1);color:#fff;}
+.nav-btn.active{border-bottom:2px solid var(--accent);}
+
+/* TABS */
+.tab-content{display:none;}.tab-content.active{display:block;}
+
+/* LAYOUT */
+.container{max-width:1120px;margin:0 auto;padding:24px 20px;}
+
+/* SUMMARY */
+.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px;}
+.sc{background:var(--ink);color:var(--paper);border-radius:6px;padding:16px 20px;position:relative;overflow:hidden;}
+.sc::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
+.sc.c1::before{background:var(--accent);}.sc.c2::before{background:var(--green);}.sc.c3::before{background:var(--gold);}
+.sc .sl{font-family:var(--mono);font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:#777;margin-bottom:4px;}
+.sc .sa{font-family:var(--mono);font-size:1.5rem;font-weight:500;letter-spacing:-1px;}
+.sc .sn{font-size:.71rem;color:#555;margin-top:2px;}
+
+/* PANEL */
+.panel{background:white;border:1px solid var(--border);border-radius:6px;margin-bottom:18px;overflow:hidden;}
+.ph{padding:11px 17px;background:var(--cream);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+.ph h2{font-family:var(--mono);font-size:.68rem;letter-spacing:2px;text-transform:uppercase;}
+.pb{padding:16px;}
+
+/* FORMS */
+.form-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;}
+.fg{display:flex;flex-direction:column;gap:4px;flex:1;min-width:110px;}
+.fg label{font-family:var(--mono);font-size:.58rem;letter-spacing:1.5px;text-transform:uppercase;color:#888;}
+.fg input,.fg select{padding:8px 10px;border:1px solid var(--border);border-radius:4px;
+  font-family:var(--sans);font-size:.84rem;background:var(--paper);color:var(--ink);outline:none;transition:border-color .15s;}
+.fg input:focus,.fg select:focus{border-color:var(--accent);background:white;}
+
+/* AUTOCOMPLETE */
+.ac-wrap{position:relative;width:100%;}
+.ac-wrap input{width:100%;}
+.ac-wrap input.has-val{border-color:var(--green);background:#f0faf4;}
+.ac-wrap input.no-match{border-color:var(--accent);}
+.ac-dropdown{
+  position:absolute;top:calc(100% + 3px);left:0;right:0;z-index:400;
+  background:white;border:1px solid var(--border);border-radius:5px;
+  box-shadow:0 8px 24px rgba(0,0,0,.14);max-height:230px;overflow-y:auto;display:none;
+}
+.ac-dropdown.open{display:block;}
+.ac-item{padding:7px 12px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:background .1s;}
+.ac-item:hover,.ac-item.focused{background:var(--cream);}
+.ac-item .ac-id{font-family:var(--mono);font-size:.88rem;font-weight:500;letter-spacing:1px;color:var(--ink);min-width:46px;}
+.ac-item .ac-name{font-size:.81rem;color:#666;}
+.ac-item.ac-none{color:#aaa;font-size:.78rem;cursor:default;justify-content:center;padding:10px;}
+.ac-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  background:none;border:none;cursor:pointer;color:#bbb;font-size:.85rem;line-height:1;padding:2px;display:none;}
+.ac-clear:hover{color:var(--accent);}
+.ac-clear.show{display:block!important;}
+.ac-input{width:100%;padding:8px 26px 8px 10px;border:1px solid var(--border);border-radius:4px;
+  font-family:var(--sans);font-size:.84rem;background:var(--paper);color:var(--ink);outline:none;transition:border-color .15s;}
+.ac-input:focus{border-color:var(--accent);background:white;}
+.ac-input.ac-selected{border-color:var(--green);background:#f0faf4;font-weight:500;}
+.ac-hl{background:#fde68a;border-radius:2px;padding:0 1px;}
+.ac-none{padding:10px 14px;color:#aaa;font-size:.8rem;text-align:center;}
+.selected-tag{display:inline-flex;align-items:center;gap:6px;background:var(--ink);color:white;
+  padding:4px 10px;border-radius:20px;font-family:var(--mono);font-size:.78rem;letter-spacing:1px;margin-top:4px;}
+.selected-tag button{background:none;border:none;color:#aaa;cursor:pointer;font-size:.8rem;line-height:1;padding:0;}
+.selected-tag button:hover{color:white;}
+
+/* BUTTONS */
+.btn{font-family:var(--sans);font-size:.79rem;font-weight:500;padding:8px 15px;border-radius:4px;
+  border:none;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.btn-primary{background:var(--accent);color:white;}.btn-primary:hover{background:#a33830;}
+.btn-green{background:var(--green);color:white;}.btn-green:hover{background:#225a3e;}
+.btn-gold{background:var(--gold);color:white;}.btn-gold:hover{background:#9a6e09;}
+.btn-ink{background:var(--ink);color:white;}.btn-ink:hover{background:#2a2a44;}
+.btn-blue{background:var(--blue);color:white;}.btn-blue:hover{background:#1e3070;}
+.btn-ghost{background:transparent;color:#555;border:1px solid #ddd;}.btn-ghost:hover{border-color:#aaa;}
+.btn-danger{background:#fee2e2;color:#b91c1c;border:none;}.btn-danger:hover{background:#fecaca;}
+.btn-sm{padding:4px 9px;font-size:.71rem;}
+.egroup{display:flex;gap:6px;margin-left:auto;}
+
+/* TABLE */
+.tw{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:.83rem;}
+thead tr{background:var(--cream);border-bottom:2px solid var(--border);}
+th{font-family:var(--mono);font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:#777;
+  padding:8px 12px;text-align:left;white-space:nowrap;}
+tbody tr{border-bottom:1px solid #eee;transition:background .1s;}
+tbody tr:hover{background:#fafaf7;}
+td{padding:9px 12px;vertical-align:middle;}
+td.mono{font-family:var(--mono);}
+td.amt{font-family:var(--mono);font-weight:500;color:var(--accent);}
+td.amt.paid{color:var(--green);}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;
+  font-family:var(--mono);font-size:.6rem;font-weight:500;letter-spacing:1px;text-transform:uppercase;}
+.b-out{background:#fff3cd;color:#856404;}.b-paid{background:var(--green-bg);color:var(--green);}
+.b-dup{background:#fee2e2;color:#b91c1c;}.b-new{background:var(--blue-light);color:var(--blue);}
+.acts{display:flex;gap:4px;}
+.empty{text-align:center;padding:36px;color:#bbb;font-family:var(--mono);font-size:.7rem;letter-spacing:1px;}
+
+/* MEMBER CARDS */
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(225px,1fr));gap:12px;}
+.mcard{background:white;border:1px solid var(--border);border-radius:6px;padding:14px 16px;
+  cursor:pointer;transition:all .2s;border-left:4px solid var(--border);position:relative;}
+.mcard:hover{border-left-color:var(--accent);box-shadow:0 2px 12px rgba(0,0,0,.07);transform:translateY(-1px);}
+.mcard .mid{font-family:var(--mono);font-size:1.2rem;font-weight:500;letter-spacing:2px;}
+.mcard .mname{font-size:.84rem;color:#666;margin-top:2px;}
+.mcard .mstats{display:flex;gap:12px;margin-top:8px;padding-top:8px;border-top:1px solid #eee;}
+.mst .msl{font-family:var(--mono);font-size:.54rem;letter-spacing:1.5px;text-transform:uppercase;color:#aaa;}
+.mst .msv{font-family:var(--mono);font-size:.86rem;font-weight:500;margin-top:1px;}
+.msv.red{color:var(--accent);}.msv.grn{color:var(--green);}
+.del-member{position:absolute;top:10px;right:10px;background:none;border:none;color:#ddd;
+  cursor:pointer;font-size:.9rem;transition:color .15s;}
+.del-member:hover{color:var(--accent);}
+
+/* MODALS */
+.mo{display:none;position:fixed;inset:0;background:rgba(26,26,46,.65);backdrop-filter:blur(3px);
+  z-index:500;align-items:center;justify-content:center;}
+.mo.open{display:flex;}
+.modal{background:white;border-radius:8px;width:min(740px,96vw);max-height:90vh;
+  overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.28);}
+.modal.sm{width:min(450px,96vw);}
+.modal.lg{width:min(860px,96vw);}
+.mh{padding:15px 21px;background:var(--ink);color:white;display:flex;align-items:center;gap:10px;
+  border-bottom:3px solid var(--accent);flex-shrink:0;}
+.mh .mid2{font-family:var(--mono);font-size:1.35rem;letter-spacing:3px;}
+.mh .mname2{font-size:.85rem;color:#aaa;}
+.mh .xbtn{margin-left:auto;background:none;border:none;color:#888;font-size:1.25rem;cursor:pointer;line-height:1;flex-shrink:0;}
+.mh .xbtn:hover{color:white;}
+.mb{padding:18px 21px;overflow-y:auto;flex:1;}
+
+/* MEMBER DETAIL SUMMARY */
+.msum{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:15px;}
+.msc{background:var(--cream);border-radius:5px;padding:10px 14px;border-left:3px solid var(--border);}
+.msc.ra{border-left-color:var(--accent);}.msc.ga{border-left-color:var(--green);}.msc.ya{border-left-color:var(--gold);}
+.msc-l{font-family:var(--mono);font-size:.56rem;letter-spacing:2px;text-transform:uppercase;color:#888;margin-bottom:2px;}
+.msc-v{font-family:var(--mono);font-size:1rem;font-weight:500;}
+
+/* ADD MEMBER FORM */
+.amf{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.preview-box{background:var(--cream);border-radius:5px;padding:10px 14px;margin:11px 0;
+  font-family:var(--mono);font-size:.76rem;border-left:3px solid var(--accent);}
+.preview-box strong{letter-spacing:3px;font-size:.92rem;}
+
+/* ── BATCH IMPORT ── */
+.drop-zone{
+  border:2px dashed var(--border);border-radius:8px;padding:36px 20px;text-align:center;
+  cursor:pointer;transition:all .2s;background:var(--paper);
+}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--blue);background:var(--blue-light);}
+.drop-zone .dz-icon{font-size:2.2rem;margin-bottom:10px;}
+.drop-zone .dz-title{font-family:var(--mono);font-size:.82rem;font-weight:500;letter-spacing:1px;color:var(--ink);margin-bottom:4px;}
+.drop-zone .dz-sub{font-size:.77rem;color:#888;}
+.drop-zone input[type=file]{display:none;}
+
+.import-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}
+.step-card{background:var(--cream);border-radius:6px;padding:13px 15px;border-top:3px solid var(--border);}
+.step-card.s1{border-top-color:var(--blue);}.step-card.s2{border-top-color:var(--gold);}.step-card.s3{border-top-color:var(--green);}
+.step-num{font-family:var(--mono);font-size:.6rem;letter-spacing:2px;color:#aaa;text-transform:uppercase;margin-bottom:4px;}
+.step-title{font-size:.82rem;font-weight:500;margin-bottom:3px;}
+.step-desc{font-size:.75rem;color:#888;line-height:1.45;}
+
+.format-box{background:#f8f4ff;border:1px solid #d8b4fe;border-radius:6px;padding:12px 16px;margin-bottom:16px;}
+.format-box .fl{font-family:var(--mono);font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#7c3aed;margin-bottom:7px;}
+.format-table{width:100%;font-size:.78rem;border-collapse:collapse;}
+.format-table th{font-family:var(--mono);font-size:.62rem;letter-spacing:1px;text-transform:uppercase;
+  color:#888;padding:5px 10px;text-align:left;background:rgba(255,255,255,.6);border-bottom:1px solid #e9d5ff;}
+.format-table td{padding:5px 10px;font-family:var(--mono);border-bottom:1px solid #f3e8ff;}
+.format-table tr:last-child td{border-bottom:none;}
+.example-val{color:var(--blue);font-weight:500;}
+
+/* PREVIEW TABLE */
+.preview-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
+.preview-stats{display:flex;gap:10px;flex-wrap:wrap;}
+.pstat{font-family:var(--mono);font-size:.7rem;padding:3px 9px;border-radius:20px;}
+.pstat.ps-new{background:var(--blue-light);color:var(--blue);}
+.pstat.ps-dup{background:#fee2e2;color:#b91c1c;}
+.pstat.ps-err{background:#fff3cd;color:#856404;}
+.pstat.ps-mem{background:var(--green-bg);color:var(--green);}
+
+.row-err{background:#fff9f9 !important;}
+.row-dup{background:#fffaf0 !important;}
+.row-new{background:#f0f7ff !important;}
+
+/* FILTER */
+.fbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;}
+.fbar input,.fbar select{padding:6px 10px;border:1px solid var(--border);border-radius:4px;
+  font-family:var(--sans);font-size:.79rem;background:var(--paper);color:var(--ink);outline:none;}
+.fbar input:focus,.fbar select:focus{border-color:var(--accent);}
+
+/* TOAST */
+.toast{position:fixed;bottom:20px;right:20px;background:var(--ink);color:var(--paper);
+  padding:10px 16px;border-radius:5px;border-left:3px solid var(--accent);
+  font-family:var(--mono);font-size:.7rem;letter-spacing:1px;
+  opacity:0;transform:translateY(8px);transition:all .22s;z-index:999;max-width:320px;}
+.toast.show{opacity:1;transform:translateY(0);}
+
+/* DOWNLOAD TEMPLATE BTN */
+.template-row{display:flex;align-items:center;gap:10px;margin-top:14px;padding:10px 14px;
+  background:#f0f7ff;border-radius:6px;border:1px solid #bfdbfe;}
+.template-row p{font-size:.79rem;color:#444;flex:1;}
+
+/* AUTOCOMPLETE */
+.ac-wrap{position:relative;flex:1;min-width:180px;max-width:240px;}
+.ac-input{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:4px;
+  font-family:var(--sans);font-size:.84rem;background:var(--paper);color:var(--ink);
+  outline:none;transition:border-color .15s;text-transform:uppercase;}
+.ac-input:focus{border-color:var(--accent);background:white;}
+.ac-input.ac-selected{border-color:var(--green);background:#f0fdf4;}
+.ac-dropdown{position:absolute;top:calc(100% + 3px);left:0;right:0;
+  background:white;border:1px solid var(--border);border-radius:5px;
+  box-shadow:0 6px 20px rgba(0,0,0,.12);z-index:300;max-height:220px;overflow-y:auto;display:none;}
+.ac-dropdown.open{display:block;}
+.ac-item{padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:1px solid #f5f5f5;}
+.ac-item:last-child{border-bottom:none;}
+.ac-item:hover,.ac-item.focused{background:var(--cream);}
+.ac-item .ac-id{font-family:var(--mono);font-size:.85rem;font-weight:500;color:var(--ink);min-width:42px;}
+.ac-item .ac-name{font-size:.8rem;color:#666;}
+.ac-item .ac-hl{background:#fff3cd;border-radius:2px;padding:0 1px;}
+.ac-none{padding:10px 12px;font-size:.78rem;color:#aaa;font-family:var(--mono);letter-spacing:1px;}
+.ac-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  background:none;border:none;cursor:pointer;color:#bbb;font-size:.85rem;line-height:1;display:none;}
+.ac-clear.show{display:block;}
+
+/* PARTIAL PAYMENT */
+.b-partial{background:#fff3cd;color:#92400e;}
+.prog-bar{height:5px;background:#e5e7eb;border-radius:3px;margin-top:4px;overflow:hidden;}
+.prog-fill{height:100%;border-radius:3px;transition:width .3s;}
+.pay-hist-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:.8rem;}
+.pay-hist-row:last-child{border-bottom:none;}
+.pay-hist-amt{font-family:var(--mono);font-weight:500;color:var(--green);min-width:70px;}
+.pay-hist-date{font-family:var(--mono);font-size:.72rem;color:#888;}
+.pay-hist-note{color:#666;flex:1;}
+.pay-hist-del{background:none;border:none;cursor:pointer;color:#ddd;font-size:.8rem;padding:2px 4px;}
+.pay-hist-del:hover{color:var(--accent);}
+
+/* ── MOBILE-FIRST RESPONSIVE OVERHAUL ──────────────────────── */
+
+/* ── Touch-target minimum (WCAG 2.5.5) ── */
+@media(max-width:768px){
+  .btn{min-height:44px;padding:10px 16px;font-size:.82rem;}
+  .btn-sm{min-height:36px;padding:8px 13px;font-size:.75rem;}
+  .nav-btn{min-height:44px;padding:10px 11px;}
+  .fg input,.fg select,.ac-input,.fbar input,.fbar select{
+    min-height:44px;font-size:16px;/* prevents iOS zoom */
+  }
+  .login-field input{min-height:48px;font-size:16px;}
+  .btn-login{min-height:50px;font-size:1rem;}
+}
+
+/* ── Tablet (≤900px) ── */
+@media(max-width:900px){
+  .container{padding:16px 14px;}
+  .summary-grid{grid-template-columns:repeat(2,1fr);}
+  .modal.lg{width:min(860px,98vw);}
+}
+
+/* ── Mobile (≤680px) ── */
+@media(max-width:680px){
+
+  /* === HEADER === */
+  header{
+    padding:10px 14px;
+    flex-wrap:nowrap;
+    gap:8px;
+    position:sticky;top:0;z-index:200;
+  }
+  header h1{font-size:1.25rem;}
+  .tagline{display:none;}
+
+  /* Move nav to a bottom tab bar */
+  .header-nav{
+    position:fixed;
+    bottom:0;left:0;right:0;
+    margin:0;
+    background:var(--ink);
+    border-top:2px solid var(--accent);
+    display:flex;
+    justify-content:stretch;
+    z-index:250;
+    padding:0;
+    gap:0;
+  }
+  .nav-btn{
+    flex:1;
+    border-radius:0;
+    padding:10px 4px 12px;
+    font-size:.6rem;
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    border-bottom:none!important;
+    letter-spacing:.5px;
+  }
+  .nav-btn.active{
+    background:rgba(201,71,59,.15);
+    color:white;
+    border-top:2px solid var(--accent);
+    margin-top:-2px;
+  }
+
+  /* User chip compact */
+  .user-chip{
+    margin-left:auto;
+    padding:4px 8px;
+  }
+  .user-chip span{max-width:80px;font-size:.6rem;}
+  .user-chip button{font-size:.65rem;}
+
+  /* === CONTAINER + SPACING === */
+  .container{padding:14px 12px;padding-bottom:80px;/* space for tab bar */}
+
+  /* === SUMMARY GRID → stacked 2-col on mobile === */
+  .summary-grid{
+    grid-template-columns:repeat(2,1fr);
+    gap:8px;
+    margin-bottom:16px;
+  }
+  .summary-grid .sc:last-child{
+    grid-column:1/-1;/* Outstanding spans full width */
+  }
+  .sc{padding:12px 14px;}
+  .sc .sa{font-size:1.25rem;}
+
+  /* === PANEL HEADERS === */
+  .ph{flex-wrap:wrap;gap:8px;padding:10px 13px;}
+  .ph h2{font-size:.65rem;}
+  .egroup{margin-left:0;width:100%;justify-content:flex-end;}
+
+  /* === ADD ENTRY FORM — fully stacked === */
+  .form-row{flex-direction:column;gap:10px;}
+  .fg,.fg[style]{max-width:100%!important;flex:none;width:100%;}
+  #ac-outer{max-width:100%!important;}
+  .ac-wrap{max-width:100%!important;}
+  .fg input,.fg select{width:100%;}
+
+  /* === FILTER BAR === */
+  .fbar{flex-direction:column;gap:8px;}
+  .fbar input,.fbar select{width:100%;}
+  #f-member-search,#f-member-search~*{width:100%!important;max-width:100%!important;}
+  div[style*="min-width:210px"]{min-width:unset!important;max-width:100%!important;width:100%!important;}
+
+  /* === DEBT TABLE → card layout === */
+  .tw{overflow-x:unset;}
+  table{display:block;}
+  thead{display:none;}/* hide table headers */
+  tbody{display:flex;flex-direction:column;gap:10px;}
+  tbody tr{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:4px 12px;
+    padding:12px;
+    border:1px solid #eee;
+    border-radius:8px;
+    background:white;
+    border-bottom:1px solid #eee!important;
+    box-shadow:0 1px 4px rgba(0,0,0,.05);
+  }
+  tbody tr:hover{background:#fafaf7;}
+  td{
+    padding:0!important;
+    display:block;
+    font-size:.8rem;
+    line-height:1.4;
+  }
+  /* Label each cell with a pseudo data-label */
+  td::before{
+    display:block;
+    font-family:var(--mono);
+    font-size:.52rem;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    color:#aaa;
+    margin-bottom:2px;
+  }
+  td:nth-child(1)::before{content:'Date';}
+  td:nth-child(2)::before{content:'Debt ID';}
+  td:nth-child(3)::before{content:'Member';}
+  td:nth-child(4)::before{content:'Name';}
+  td:nth-child(5)::before{content:'Amount';}
+  td:nth-child(6)::before{content:'Note';}
+  td:nth-child(7)::before{content:'Status';}
+  td:nth-child(8){grid-column:1/-1;} /* actions full row */
+  td:nth-child(8)::before{content:'';}
+  .acts{flex-wrap:wrap;gap:6px;}
+  .acts .btn-sm{flex:1;}
+
+  /* === MEMBER CARDS === */
+  .mgrid{grid-template-columns:1fr 1fr;gap:10px;}
+  .mcard{padding:12px;}
+  .mcard .mid{font-size:1rem;}
+  .mcard .mstats{flex-wrap:wrap;gap:8px;}
+
+  /* === MEMBER DETAIL MODAL SUMMARY === */
+  .msum{grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
+  .msum .msc:last-child{grid-column:1/-1;}
+
+  /* === MODALS → full-screen on mobile === */
+  .mo{align-items:flex-end;padding:0;}
+  .modal,.modal.sm,.modal.lg{
+    width:100%;
+    border-radius:14px 14px 0 0;
+    max-height:92vh;
+    margin:0;
+  }
+  .mh{padding:13px 16px;}
+  .mb{padding:14px 16px;}
+
+  /* === SPOTLIGHT PANEL === */
+  #spotlight-panel > div{
+    flex-direction:column!important;
+    gap:12px!important;
+    padding:12px 14px!important;
+  }
+  #spotlight-panel > div > div:last-child{
+    margin-left:0!important;
+    width:100%;
+    display:grid!important;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+  }
+  #spotlight-panel > div > div:last-child > div{
+    text-align:left!important;
+    background:rgba(255,255,255,.07);
+    border-radius:6px;
+    padding:8px;
+  }
+  #spotlight-panel > div > div:last-child > button{
+    grid-column:1/-1;
+    width:100%;
+  }
+
+  /* === IMPORT STEPS === */
+  .import-steps{grid-template-columns:1fr;gap:10px;}
+  .amf{grid-template-columns:1fr;}
+
+  /* === TOAST → bottom-center === */
+  .toast{
+    left:50%;
+    right:auto;
+    bottom:72px;/* above tab bar */
+    transform:translateX(-50%) translateY(8px);
+    min-width:240px;
+    max-width:90vw;
+    text-align:center;
+  }
+  .toast.show{transform:translateX(-50%) translateY(0);}
+
+  /* === EXPORT MENU === */
+  #export-menu{left:0!important;right:0!important;min-width:unset!important;}
+
+  /* === SUMMARY FORMAT TABLES scroll on small screen === */
+  .format-box{overflow-x:auto;}
+  .format-table{min-width:400px;}
+
+  /* === LOGIN SCREEN === */
+  .login-box{border-radius:10px 10px 0 0;position:fixed;bottom:0;left:0;right:0;width:100%!important;}
+  #login-screen{align-items:flex-end;}
+  .login-head{padding:22px 22px 16px;}
+  .login-body{padding:20px 22px 28px;}
+
+  /* === PANEL BODY PADDING === */
+  .pb{padding:12px;}
+
+  /* === USER CHIP in header hide email === */
+  .user-chip span{display:none;}
+
+  /* === EMPTY STATE ROW — don't apply card layout === */
+  tbody tr.empty-row,
+  tr:has(td.empty){
+    display:block!important;
+    padding:0!important;
+    background:none!important;
+    border:none!important;
+    box-shadow:none!important;
+  }
+  .empty{display:block!important;}
+
+  /* === MEMBER MODAL TABLE — stay as table but scroll === */
+  .mb .tw{overflow-x:auto;}
+  .mb table{display:table;}
+  .mb thead{display:table-header-group;}
+  .mb tbody{display:table-row-group;flex-direction:unset;gap:unset;}
+  .mb tbody tr{
+    display:table-row;padding:0;border:none;border-radius:0;
+    background:none!important;box-shadow:none;
+    grid-template-columns:unset;gap:unset;
+  }
+  .mb tbody tr:nth-child(even){background:var(--cream)!important;}
+  .mb td{
+    display:table-cell!important;
+    padding:9px 12px!important;
+    vertical-align:middle;
+  }
+  .mb td::before{display:none;}
+}
+
+/* EXPORT DROPDOWN */
+.export-opt{display:flex;align-items:center;gap:9px;width:100%;padding:9px 14px;
+  background:none;border:none;cursor:pointer;font-family:var(--sans);font-size:.82rem;
+  color:var(--ink);text-align:left;transition:background .1s;}
+.export-opt:hover{background:var(--cream);}
+.eo-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+
+/* LOADING OVERLAY */
+#loading-overlay{position:fixed;inset:0;background:var(--ink);z-index:9999;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  transition:opacity .3s;}
+#loading-overlay.hidden{opacity:0;pointer-events:none;display:none;}
+.spinner{width:36px;height:36px;border:3px solid rgba(244,241,235,.15);
+  border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-txt{font-family:var(--mono);font-size:.72rem;letter-spacing:2px;
+  text-transform:uppercase;color:#666;}
+
+/* LOGIN SCREEN */
+#login-screen{position:fixed;inset:0;background:var(--ink);z-index:8000;
+  display:flex;align-items:center;justify-content:center;
+  background-image:repeating-linear-gradient(0deg,transparent,transparent 27px,rgba(255,255,255,.03) 28px);}
+#login-screen.hidden{display:none;}
+.login-box{background:var(--paper);border-radius:10px;width:min(400px,92vw);
+  overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.5);}
+.login-head{background:var(--ink);padding:28px 28px 22px;border-bottom:3px solid var(--accent);}
+.login-head h2{font-family:var(--serif);font-size:1.8rem;color:var(--paper);margin-bottom:4px;}
+.login-head p{font-family:var(--mono);font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#555;}
+.login-body{padding:26px 28px;}
+.login-field{margin-bottom:16px;}
+.login-field label{display:block;font-family:var(--mono);font-size:.6rem;letter-spacing:1.5px;
+  text-transform:uppercase;color:#888;margin-bottom:6px;}
+.login-field input{width:100%;padding:10px 13px;border:1px solid var(--border);border-radius:5px;
+  font-family:var(--sans);font-size:.9rem;background:white;color:var(--ink);outline:none;transition:border-color .15s;}
+.login-field input:focus{border-color:var(--accent);}
+.login-err{background:#fee2e2;color:#b91c1c;border-radius:5px;padding:9px 13px;
+  font-size:.8rem;margin-bottom:14px;display:none;font-family:var(--mono);font-size:.72rem;letter-spacing:.5px;}
+.login-err.show{display:block;}
+.btn-login{width:100%;padding:11px;background:var(--accent);color:white;border:none;
+  border-radius:5px;font-family:var(--sans);font-size:.9rem;font-weight:500;
+  cursor:pointer;transition:background .15s;margin-top:4px;}
+.btn-login:hover{background:#a33830;}
+.btn-login:disabled{background:#ccc;cursor:default;}
+/* User chip in header */
+.user-chip{display:flex;align-items:center;gap:8px;margin-left:8px;
+  background:rgba(255,255,255,.07);border-radius:20px;padding:5px 12px 5px 8px;}
+.user-chip span{font-family:var(--mono);font-size:.65rem;letter-spacing:.5px;color:#bbb;max-width:160px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.user-chip button{background:none;border:none;color:#777;cursor:pointer;font-size:.72rem;
+  font-family:var(--mono);letter-spacing:1px;padding:0;transition:color .15s;}
+.user-chip button:hover{color:var(--accent);}
+</style>
+</head>
+<body>
+
+<div id="login-screen" class="hidden">
+  <div class="login-box">
+    <div class="login-head">
+      <h2>OLA 2M</h2>
+      <p>Group Debt Tracker — Sign In</p>
+    </div>
+    <div class="login-body">
+      <div class="login-err" id="login-err"></div>
+      <div class="login-field">
+        <label>Email</label>
+        <input type="email" id="login-email" placeholder="you@example.com"
+          onkeydown="if(event.key==='Enter')doLogin()" />
+      </div>
+      <div class="login-field">
+        <label>Password</label>
+        <input type="password" id="login-pass" placeholder="••••••••"
+          onkeydown="if(event.key==='Enter')doLogin()" />
+      </div>
+      <button class="btn-login" id="login-btn" onclick="doLogin()">Sign In</button>
+    </div>
+  </div>
+</div>
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-txt" id="loading-txt">Connecting…</div>
+</div>
+
+<header>
+  <h1>OLA 2M</h1>
+  <span class="tagline">Group Debt Tracker</span>
+  <nav class="header-nav">
+    <button class="nav-btn active" onclick="showTab('ledger',this)">📋 Ledger</button>
+    <button class="nav-btn" onclick="showTab('members',this)">👥 Members</button>
+    <button class="nav-btn" onclick="showTab('import',this)">📥 Import</button>
+  </nav>
+  <div class="user-chip" id="user-chip" style="display:none">
+    <span id="user-email"></span>
+    <button onclick="doSignOut()" title="Sign out">Sign out</button>
+  </div>
+</header>
+
+<!-- ═══════════════════ LEDGER TAB ═══════════════════ -->
+<div id="tab-ledger" class="tab-content active">
+<div class="container">
+
+  <div class="summary-grid">
+    <div class="sc c1"><div class="sl">Total Recorded</div><div class="sa" id="s-total">0.00</div><div class="sn" id="sc-total">0 entries</div></div>
+    <div class="sc c2"><div class="sl">Total Paid</div><div class="sa" id="s-paid">0.00</div><div class="sn" id="sc-paid">0 entries</div></div>
+    <div class="sc c3"><div class="sl">Outstanding</div><div class="sa" id="s-out">0.00</div><div class="sn" id="sc-out">0 entries</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="ph"><h2>➕ Add Single Debt Entry</h2></div>
+    <div class="pb">
+      <div class="form-row">
+        <div class="fg" style="max-width:220px;position:relative;" id="ac-outer">
+          <label>Member</label>
+          <div class="ac-wrap">
+            <input type="text" id="inp-member-search" class="ac-input" placeholder="Type ID or name…"
+              autocomplete="off" oninput="acInput()" onkeydown="acKeydown(event)" onfocus="acInput()" />
+            <button class="ac-clear" id="ac-clear-btn" onclick="acClear()" title="Clear">✕</button>
+            <div class="ac-dropdown" id="ac-dropdown"></div>
+          </div>
+          <input type="hidden" id="inp-member" value="" />
+        </div>
+        <div class="fg" style="max-width:140px">
+          <label>Amount</label>
+          <input type="number" id="inp-amount" placeholder="0.00" min="0" step="0.01" />
+        </div>
+        <div class="fg" style="max-width:155px">
+          <label>Date</label>
+          <input type="date" id="inp-date" />
+        </div>
+        <div class="fg">
+          <label>Note (optional)</label>
+          <input type="text" id="inp-note" placeholder="Description…" />
+        </div>
+        <div class="fg" style="max-width:115px">
+          <label>&nbsp;</label>
+          <button class="btn btn-primary" id="add-btn" onclick="addOrUpdateDebt()">Add Entry</button>
+        </div>
+      </div>
+      <p style="margin-top:8px;font-size:.74rem;color:#aaa">
+        Member not listed? <a href="#" style="color:var(--accent)" onclick="showTab('members',null);return false">Register →</a>
+        &nbsp;|&nbsp; Bulk data? <a href="#" style="color:var(--blue)" onclick="showTab('import',null);return false">Import from Excel →</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Member spotlight panel (shown when a member is filtered) -->
+  <div id="spotlight-panel" style="display:none;margin-bottom:18px">
+    <div style="background:var(--ink);border-radius:6px;padding:14px 20px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;border-left:4px solid var(--accent)">
+      <div>
+        <div style="font-family:var(--mono);font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:#777;margin-bottom:3px">Viewing member</div>
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span id="sp-id" style="font-family:var(--mono);font-size:1.4rem;font-weight:500;letter-spacing:2px;color:white"></span>
+          <span id="sp-name" style="font-size:.88rem;color:#aaa"></span>
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;margin-left:auto;flex-wrap:wrap">
+        <div style="text-align:right">
+          <div style="font-family:var(--mono);font-size:.58rem;letter-spacing:1.5px;text-transform:uppercase;color:#666">Total Debt</div>
+          <div id="sp-total" style="font-family:var(--mono);font-size:1.1rem;color:#e88;font-weight:500"></div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-family:var(--mono);font-size:.58rem;letter-spacing:1.5px;text-transform:uppercase;color:#666">Paid</div>
+          <div id="sp-paid" style="font-family:var(--mono);font-size:1.1rem;color:#6d9;font-weight:500"></div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-family:var(--mono);font-size:.58rem;letter-spacing:1.5px;text-transform:uppercase;color:#666">Outstanding</div>
+          <div id="sp-out" style="font-family:var(--mono);font-size:1.1rem;color:#fb3;font-weight:500"></div>
+        </div>
+        <button class="btn btn-sm" style="background:rgba(255,255,255,.1);color:#ccc;border:1px solid #444;align-self:center" onclick="clearMemberFilter()">✕ Clear filter</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="ph">
+      <h2>📒 Debt Register</h2>
+      <span style="font-family:var(--mono);font-size:.6rem;color:#aaa">newest first</span>
+      <div class="egroup" style="position:relative">
+        <button class="btn btn-sm btn-gold" onclick="toggleExportMenu(event,'csv')">⬇ CSV ▾</button>
+        <button class="btn btn-sm btn-ink" onclick="toggleExportMenu(event,'pdf')">⬇ PDF ▾</button>
+        <div id="export-menu" style="display:none;position:absolute;top:calc(100% + 5px);right:0;z-index:300;
+          background:white;border:1px solid var(--border);border-radius:6px;
+          box-shadow:0 8px 24px rgba(0,0,0,.14);min-width:210px;overflow:hidden">
+          <div id="export-menu-title" style="font-family:var(--mono);font-size:.6rem;letter-spacing:2px;text-transform:uppercase;
+            color:#aaa;padding:8px 14px 4px">Export as</div>
+          <button class="export-opt" onclick="doExport('unpaid')">
+            <span class="eo-dot" style="background:var(--accent)"></span>Outstanding &amp; Partial
+          </button>
+          <button class="export-opt" onclick="doExport('paid')">
+            <span class="eo-dot" style="background:var(--green)"></span>Paid Only
+          </button>
+          <button class="export-opt" onclick="doExport('all')" style="border-top:1px solid #f0f0f0">
+            <span class="eo-dot" style="background:var(--ink)"></span>All Debts
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="pb" style="padding-bottom:4px">
+      <div class="fbar">
+        <!-- Member filter autocomplete -->
+        <div style="position:relative;min-width:210px;flex:1;max-width:280px">
+          <input type="text" id="f-member-search" class="ac-input" placeholder="🔍 Filter by member…"
+            autocomplete="off" oninput="fmInput()" onkeydown="fmKeydown(event)" onfocus="fmInput()"
+            style="width:100%;padding-right:26px" />
+          <button id="f-member-clear" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);
+            background:none;border:none;cursor:pointer;color:#bbb;font-size:.85rem;display:none"
+            onclick="clearMemberFilter()">✕</button>
+          <div class="ac-dropdown" id="f-member-dropdown"></div>
+        </div>
+        <input type="hidden" id="f-member" value="" />
+        <select id="f-status" onchange="renderTable()">
+          <option value="all">All statuses</option>
+          <option value="outstanding">Outstanding</option>
+          <option value="partial">Partial</option>
+          <option value="paid">Paid</option>
+        </select>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th>Date</th><th>Debt ID</th><th>Member ID</th><th>Name</th><th>Amount</th><th>Note</th><th>Status</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="debt-tbody"></tbody>
+      </table>
+      <div id="empty-debts" class="empty" style="display:none">NO ENTRIES YET</div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ═══════════════════ MEMBERS TAB ═══════════════════ -->
+<div id="tab-members" class="tab-content">
+<div class="container">
+  <div class="panel">
+    <div class="ph">
+      <h2>👥 Registered Members</h2>
+      <div style="margin-left:auto"><button class="btn btn-primary" onclick="openAddMember()">+ Register Member</button></div>
+    </div>
+    <div class="pb">
+      <div class="fbar">
+        <input id="f-msearch" type="text" placeholder="🔍 Search name or ID…" oninput="renderMembers()" style="text-transform:uppercase;min-width:190px" />
+      </div>
+      <div class="mgrid" id="mgrid"></div>
+      <div id="empty-members" class="empty" style="display:none">NO MEMBERS REGISTERED YET</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════ IMPORT TAB ═══════════════════ -->
+<div id="tab-import" class="tab-content">
+<div class="container">
+
+  <div class="panel">
+    <div class="ph"><h2>📥 Batch Import from Excel</h2></div>
+    <div class="pb">
+
+      <div class="import-steps">
+        <div class="step-card s1">
+          <div class="step-num">Step 1</div>
+          <div class="step-title">Export from OLA</div>
+          <div class="step-desc">Use the <strong>CSV ▾</strong> export button on the Ledger tab. The file will have columns: <strong>Date, Debt ID, Member ID, Member Name, Amount, Balance, Note, Status</strong>.</div>
+        </div>
+        <div class="step-card s2">
+          <div class="step-num">Step 2</div>
+          <div class="step-title">Upload &amp; preview</div>
+          <div class="step-desc">Drop your CSV or .xlsx file here. OLA will parse each row, match Member IDs (3 digits + 1 letter, e.g. <strong>243V</strong>), and flag duplicates automatically.</div>
+        </div>
+        <div class="step-card s3">
+          <div class="step-num">Step 3</div>
+          <div class="step-title">Review &amp; confirm</div>
+          <div class="step-desc">Check the preview table. Partial payments are restored from the Balance column. Click <em>Import All</em> to commit to the ledger.</div>
+        </div>
+      </div>
+
+      <!-- Format tabs -->
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button class="btn btn-sm" id="fmt-tab-ola" onclick="switchFmtTab('ola')"
+          style="background:var(--ink);color:white;font-family:var(--mono);font-size:.68rem;letter-spacing:1px">OLA CSV Export</button>
+        <button class="btn btn-sm" id="fmt-tab-excel" onclick="switchFmtTab('excel')"
+          style="background:transparent;color:#666;border:1px solid #ddd;font-family:var(--mono);font-size:.68rem;letter-spacing:1px">Original Excel Format</button>
+      </div>
+
+      <div id="fmt-ola" class="format-box" style="border-color:#bbf7d0;background:#f0fdf4">
+        <div class="fl" style="color:#2d6a4f">OLA CSV Export (recommended — restores all your data)</div>
+        <p style="font-size:.78rem;color:#444;margin-bottom:8px">Upload the CSV exported from OLA. All debt statuses, member names, and payment info will be restored automatically.</p>
+        <table class="format-table">
+          <thead><tr><th>Column</th><th>Example</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Date</td><td class="example-val">12/03/2026</td><td>DD/MM/YYYY</td></tr>
+            <tr><td>Debt ID</td><td class="example-val">243V120326</td><td>Member ID + DDMMYY</td></tr>
+            <tr><td>Member ID</td><td class="example-val">243V</td><td>3 digits + 1 letter</td></tr>
+            <tr><td>Member Name</td><td class="example-val">John Doe</td><td>Restores member names</td></tr>
+            <tr><td>Amount</td><td class="example-val">1000.00</td><td>Original debt amount</td></tr>
+            <tr><td>Balance</td><td class="example-val">500.00</td><td>Remaining owed — used to restore partial payments</td></tr>
+            <tr><td>Note</td><td class="example-val">ATF</td><td>Optional description</td></tr>
+            <tr><td>Status</td><td class="example-val">outstanding</td><td>outstanding / partial / paid</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="fmt-excel" class="format-box" style="display:none">
+        <div class="fl">Original Excel Format</div>
+        <table class="format-table">
+          <thead><tr><th>Column</th><th>Example</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>A — User ID</td><td class="example-val">256V</td><td>3 digits + 1 letter</td></tr>
+            <tr><td>B — Debt ID</td><td class="example-val">256V120226</td><td>User ID + DDMMYY date</td></tr>
+            <tr><td>C — Amount</td><td class="example-val">15000</td><td>Numeric, no currency symbol</td></tr>
+            <tr><td>D — Notes</td><td class="example-val">Monthly subscription</td><td>Optional free text</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Drop Zone -->
+      <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()"
+           ondragover="dzOver(event)" ondragleave="dzLeave()" ondrop="dzDrop(event)">
+        <input type="file" id="file-input" accept=".xlsx,.xls,.csv" onchange="handleFile(this.files[0])">
+        <div class="dz-icon">📊</div>
+        <div class="dz-title">DROP FILE HERE</div>
+        <div class="dz-sub">OLA CSV export · .xlsx · .xls · .csv — all accepted</div>
+      </div>
+
+      <div class="template-row">
+        <span style="font-size:1.1rem">📄</span>
+        <p>Need a template? Download a pre-formatted Excel file with the correct column layout.</p>
+        <button class="btn btn-blue btn-sm" onclick="downloadTemplate()">⬇ Download Template</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Preview Panel (hidden until file loaded) -->
+  <div class="panel" id="preview-panel" style="display:none">
+    <div class="ph">
+      <h2>👁 Import Preview</h2>
+      <div class="preview-stats" id="preview-stats"></div>
+      <div class="egroup">
+        <button class="btn btn-sm btn-ghost" onclick="clearImport()">✕ Clear</button>
+        <button class="btn btn-sm btn-green" id="import-btn" onclick="commitImport()">✔ Import All New Rows</button>
+      </div>
+    </div>
+    <div class="pb" style="padding-bottom:4px">
+      <div class="fbar">
+        <select id="pf-status" onchange="renderPreview()">
+          <option value="all">Show all rows</option>
+          <option value="new">New only</option>
+          <option value="dup">Duplicates only</option>
+          <option value="err">Errors only</option>
+        </select>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th>Row</th><th>Member</th><th>Name</th><th>Debt ID</th><th>Date</th><th>Amount</th><th>Balance</th><th>Status</th><th>Issue</th>
+        </tr></thead>
+        <tbody id="preview-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ═══════════════════ ADD MEMBER MODAL ═══════════════════ -->
+<div class="mo" id="mo-addmember">
+  <div class="modal sm">
+    <div class="mh">
+      <div>
+        <div style="font-family:var(--mono);font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:#aaa;margin-bottom:2px">New Member</div>
+        <div style="font-family:var(--serif);font-size:1.1rem">Register Member</div>
+      </div>
+      <button class="xbtn" onclick="closeModal('mo-addmember')">✕</button>
+    </div>
+    <div class="mb">
+      <div class="amf">
+        <div class="fg">
+          <label>Three Digits</label>
+          <input type="text" id="m-digits" placeholder="e.g. 256" maxlength="3"
+            oninput="this.value=this.value.replace(/\D/g,'');updatePreviewId()" />
+        </div>
+        <div class="fg">
+          <label>Letter (A–Z)</label>
+          <input type="text" id="m-letter" placeholder="e.g. V" maxlength="1"
+            oninput="this.value=this.value.replace(/[^a-zA-Z]/g,'').toUpperCase();updatePreviewId()" />
+        </div>
+        <div class="fg" style="grid-column:1/-1">
+          <label>Full Name</label>
+          <input type="text" id="m-name" placeholder="Member full name" />
+        </div>
+        <div class="fg" style="grid-column:1/-1">
+          <label>Notes (optional)</label>
+          <input type="text" id="m-notes" placeholder="Any additional info…" />
+        </div>
+      </div>
+      <div class="preview-box">Member ID Preview: <strong id="id-preview">—</strong></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="closeModal('mo-addmember')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveMember()">Register Member</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ MEMBER DETAIL MODAL ═══════════════════ -->
+<div class="mo" id="mo-member">
+  <div class="modal">
+    <div class="mh">
+      <div>
+        <div class="mid2" id="md-id">—</div>
+        <div class="mname2" id="md-name">—</div>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+        <button class="btn btn-sm btn-gold" onclick="exportMemberCSV()">⬇ CSV</button>
+        <button class="btn btn-sm btn-ink" onclick="exportMemberPDF()">⬇ PDF</button>
+        <button class="xbtn" onclick="closeModal('mo-member')">✕</button>
+      </div>
+    </div>
+    <div class="mb">
+      <div class="msum">
+        <div class="msc ra"><div class="msc-l">Total Debt</div><div class="msc-v" id="md-total">0.00</div></div>
+        <div class="msc ga"><div class="msc-l">Total Paid</div><div class="msc-v" id="md-paid">0.00</div></div>
+        <div class="msc ya"><div class="msc-l">Outstanding</div><div class="msc-v" id="md-out">0.00</div></div>
+      </div>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Date</th><th>Debt ID</th><th>Amount</th><th>Note</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="md-tbody"></tbody>
+        </table>
+        <div id="md-empty" class="empty" style="display:none">NO ENTRIES FOR THIS MEMBER</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ PARTIAL PAYMENT MODAL ═══════════════════ -->
+<div class="mo" id="mo-payment">
+  <div class="modal sm">
+    <div class="mh">
+      <div>
+        <div style="font-family:var(--mono);font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:#aaa;margin-bottom:2px">Record Payment</div>
+        <div style="font-family:var(--serif);font-size:1.1rem">Partial / Full Payment</div>
+      </div>
+      <button class="xbtn" onclick="closeModal('mo-payment')">✕</button>
+    </div>
+    <div class="mb">
+      <!-- Debt summary strip -->
+      <div style="background:var(--cream);border-radius:5px;padding:11px 15px;margin-bottom:14px;border-left:3px solid var(--accent)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px">
+          <div>
+            <span id="pp-member" style="font-family:var(--mono);font-size:.95rem;font-weight:500;letter-spacing:1px"></span>
+            <span id="pp-debtid" style="font-family:var(--mono);font-size:.72rem;color:#aaa;margin-left:8px"></span>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:var(--mono);font-size:.58rem;letter-spacing:1.5px;text-transform:uppercase;color:#aaa">Original</div>
+            <div id="pp-original" style="font-family:var(--mono);font-size:.95rem;color:var(--accent);font-weight:500"></div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid #ddd">
+          <div>
+            <div style="font-family:var(--mono);font-size:.55rem;letter-spacing:1.5px;text-transform:uppercase;color:#aaa">Already Paid</div>
+            <div id="pp-alreadypaid" style="font-family:var(--mono);font-size:.88rem;color:var(--green);font-weight:500"></div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:var(--mono);font-size:.55rem;letter-spacing:1.5px;text-transform:uppercase;color:#aaa">Still Owed</div>
+            <div id="pp-remaining" style="font-family:var(--mono);font-size:1.1rem;color:var(--gold);font-weight:500"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Payment form -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="fg" style="grid-column:1/-1">
+          <label>Payment Amount</label>
+          <input type="number" id="pp-amount" placeholder="0.00" min="0.01" step="0.01"
+            oninput="ppUpdatePreview()" />
+        </div>
+        <div class="fg">
+          <label>Payment Date</label>
+          <input type="date" id="pp-date" />
+        </div>
+        <div class="fg">
+          <label>Note (optional)</label>
+          <input type="text" id="pp-note" placeholder="e.g. Cash payment" />
+        </div>
+      </div>
+
+      <!-- Live preview bar -->
+      <div id="pp-preview" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:5px;padding:10px 14px;margin-bottom:14px;font-size:.8rem">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px">
+          <span id="pp-preview-txt" style="color:var(--green);font-weight:500"></span>
+          <span id="pp-preview-remain" style="font-family:var(--mono);color:#555"></span>
+        </div>
+      </div>
+
+      <!-- Payment history -->
+      <div id="pp-history-wrap" style="margin-bottom:14px">
+        <div style="font-family:var(--mono);font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#aaa;margin-bottom:6px">Payment History</div>
+        <div id="pp-history"></div>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="closeModal('mo-payment')">Cancel</button>
+        <button class="btn btn-green" onclick="recordPayment()">✔ Record Payment</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const { jsPDF } = window.jspdf;
+
+// ── Format Tab Toggle ─────────────────────────────────────────────────────
+function switchFmtTab(tab) {
+  document.getElementById('fmt-ola').style.display   = tab==='ola'   ? 'block' : 'none';
+  document.getElementById('fmt-excel').style.display = tab==='excel' ? 'block' : 'none';
+  document.getElementById('fmt-tab-ola').style.background   = tab==='ola'   ? 'var(--ink)' : 'transparent';
+  document.getElementById('fmt-tab-ola').style.color        = tab==='ola'   ? 'white'      : '#666';
+  document.getElementById('fmt-tab-ola').style.border       = tab==='ola'   ? 'none'       : '1px solid #ddd';
+  document.getElementById('fmt-tab-excel').style.background = tab==='excel' ? 'var(--ink)' : 'transparent';
+  document.getElementById('fmt-tab-excel').style.color      = tab==='excel' ? 'white'      : '#666';
+  document.getElementById('fmt-tab-excel').style.border     = tab==='excel' ? 'none'       : '1px solid #ddd';
+}
+
+// ── Supabase ─dbase─────────────────────────────────────────────────────────
+const SUPA_URL = "";
+const SUPA_KEY = ""
+const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+
+// ── State ──────────────────────────────────────────────────────────────────
+let members   = [];
+let debts     = [];
+let editingId = null;
+let currentMid = null;
+let importRows = [];
+
+// ── DB helpers ─────────────────────────────────────────────────────────────
+function toDb(debt) {
+  return {
+    id:         debt.id,
+    debt_id:    debt.debtId || '',
+    member:     debt.member,
+    amount:     parseFloat(debt.amount),
+    date:       debt.date,
+    note:       debt.note || '',
+    status:     debt.status || 'outstanding',
+    payments:   debt.payments || [],
+    created_at: debt.createdAt ? new Date(debt.createdAt).toISOString() : new Date().toISOString()
+  };
+}
+function fromDb(row) {
+  return {
+    id:        row.id,
+    debtId:    row.debt_id,
+    member:    row.member,
+    amount:    parseFloat(row.amount),
+    date:      row.date,
+    note:      row.note || '',
+    status:    row.status,
+    payments:  Array.isArray(row.payments) ? row.payments : [],
+    createdAt: new Date(row.created_at).getTime()
+  };
+}
+function memberToDb(m) {
+  return { id: m.id, name: m.name, notes: m.notes || '', created_at: new Date(m.createdAt||Date.now()).toISOString() };
+}
+function memberFromDb(row) {
+  return { id: row.id, name: row.name, notes: row.notes || '', createdAt: new Date(row.created_at).getTime() };
+}
+
+function setLoading(msg) {
+  const ov = document.getElementById('loading-overlay');
+  const tx = document.getElementById('loading-txt');
+  if (msg) { tx.textContent = msg; ov.classList.remove('hidden'); }
+  else      { ov.classList.add('hidden'); }
+}
+
+function showLoginScreen() {
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('user-chip').style.display = 'none';
+  setLoading(null);
+}
+
+function showApp(user) {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('user-chip').style.display = 'flex';
+  document.getElementById('user-email').textContent = user.email;
+}
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass  = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-err');
+  const btn   = document.getElementById('login-btn');
+
+  if (!email || !pass) { errEl.textContent='Enter email and password'; errEl.classList.add('show'); return; }
+  errEl.classList.remove('show');
+  btn.disabled = true; btn.textContent = 'Signing in…';
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+  btn.disabled = false; btn.textContent = 'Sign In';
+
+  if (error) { errEl.textContent = error.message; errEl.classList.add('show'); return; }
+  showApp(data.user);
+  loadAll();
+}
+
+async function doSignOut() {
+  await sb.auth.signOut();
+  members = []; debts = [];
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-pass').value  = '';
+  showLoginScreen();
+}
+
+async function loadAll() {
+  setLoading('Loading data…');
+  const { data: mData, error: mErr } = await sb.from('members').select('*').order('created_at');
+  if (mErr) { setLoading('Error: ' + mErr.message); return; }
+  members = mData.map(memberFromDb);
+
+  const { data: dData, error: dErr } = await sb.from('debts').select('*').order('date', {ascending: false});
+  if (dErr) { setLoading('Error: ' + dErr.message); return; }
+  debts = dData.map(fromDb);
+
+  setLoading(null);
+  populateSelect();
+  renderAll();
+}
+
+// save() is now a no-op — all writes go directly to Supabase
+function save() {}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function uid()   { return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function fmt(n)  { return parseFloat(n||0).toFixed(2); }
+function today() { return new Date().toISOString().split('T')[0]; }
+
+function fdate(iso) {
+  if(!iso) return '—';
+  const [y,m,d]=iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+// Parse debt ID: <UserID><DDMMYY>  e.g. 256V120226 → date 2026-02-12
+function parseDebtId(debtId, userId) {
+  if(!debtId || !userId) return null;
+  const str = String(debtId).trim().toUpperCase();
+  const uid  = String(userId).trim().toUpperCase();
+  if(!str.startsWith(uid)) return null;
+  const datePart = str.slice(uid.length); // DDMMYY
+  if(datePart.length !== 6) return null;
+  const dd = datePart.slice(0,2);
+  const mm = datePart.slice(2,4);
+  const yy = datePart.slice(4,6);
+  const year = parseInt(yy) + 2000;
+  const dateStr = `${year}-${mm}-${dd}`;
+  const d = new Date(dateStr);
+  if(isNaN(d.getTime())) return null;
+  return dateStr;
+}
+
+function getMember(id) { return members.find(m=>m.id===id); }
+function mDebts(id)    { return debts.filter(d=>d.member===id); }
+function sorted(arr)   { return [...arr].sort((a,b)=>new Date(b.date)-new Date(a.date)); }
+
+function toast(msg, col) {
+  const el=document.getElementById('toast');
+  el.textContent=msg;
+  el.style.borderLeftColor = col||'var(--accent)';
+  el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'), 3000);
+}
+
+// ── Tabs ───────────────────────────────────────────────────────────────────
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  if(btn) btn.classList.add('active');
+  else document.querySelectorAll('.nav-btn').forEach(b=>{
+    if(b.textContent.toLowerCase().includes(name)) b.classList.add('active');
+  });
+}
+
+// ── Modals ─────────────────────────────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.mo').forEach(el=>{
+  el.addEventListener('click',e=>{ if(e.target===el) el.classList.remove('open'); });
+});
+
+// ── Member Registration ────────────────────────────────────────────────────
+function openAddMember(prefillId) {
+  ['m-digits','m-letter','m-name','m-notes'].forEach(i=>document.getElementById(i).value='');
+  if(prefillId) {
+    document.getElementById('m-digits').value = prefillId.slice(0,3);
+    document.getElementById('m-letter').value = prefillId.slice(3);
+  }
+  updatePreviewId();
+  openModal('mo-addmember');
+}
+
+function updatePreviewId() {
+  const d=document.getElementById('m-digits').value;
+  const l=document.getElementById('m-letter').value;
+  document.getElementById('id-preview').textContent=(d.length===3&&l.length===1)?d+l:'—';
+}
+
+async function saveMember(autoId, autoName) {
+  const digits = autoId ? autoId.slice(0,3) : document.getElementById('m-digits').value.trim();
+  const letter = autoId ? autoId.slice(3)   : document.getElementById('m-letter').value.trim().toUpperCase();
+  const name   = autoName || document.getElementById('m-name').value.trim();
+  const notes  = autoId ? '' : document.getElementById('m-notes').value.trim();
+
+  if(!/^\d{3}$/.test(digits))   { toast('⚠ Enter exactly 3 digits'); return false; }
+  if(!/^[A-Z]$/.test(letter))   { toast('⚠ Enter exactly 1 letter (A–Z)'); return false; }
+  if(!name)                     { toast('⚠ Enter member name'); return false; }
+
+  const id=digits+letter;
+  if(members.find(m=>m.id===id)) {
+    if(!autoId) toast(`⚠ Member ${id} already exists`);
+    return false;
+  }
+
+  const newMember = {id, name, notes, createdAt: Date.now()};
+  const { error } = await sb.from('members').upsert(memberToDb(newMember));
+  if (error) { toast('⚠ ' + error.message); return false; }
+  if (!members.find(m=>m.id===id)) members.push(newMember);
+  populateSelect(); renderMembers();
+  if(!autoId) { closeModal('mo-addmember'); toast(`✔ Member ${id} registered`); }
+  return true;
+}
+
+async function deleteMember(id) {
+  if(!confirm(`Delete member ${id} and ALL their debt entries?`)) return;
+  await sb.from('debts').delete().eq('member', id);
+  await sb.from('members').delete().eq('id', id);
+  members = members.filter(m=>m.id!==id);
+  debts   = debts.filter(d=>d.member!==id);
+  populateSelect(); renderAll(); toast(`✔ Member ${id} deleted`);
+}
+
+// ── Member Select (hidden field) ───────────────────────────────────────────
+function populateSelect() {
+  // no-op: autocomplete pulls from members array directly
+  // kept for compatibility with import/other callers
+}
+
+// ── Autocomplete ───────────────────────────────────────────────────────────
+let acFocusIdx = -1;
+let acResults  = [];
+
+function acInput() {
+  const raw = document.getElementById('inp-member-search').value || '';
+  const q   = raw.trim().toUpperCase();
+  const dd  = document.getElementById('ac-dropdown');
+  const clearBtn = document.getElementById('ac-clear-btn');
+
+  document.getElementById('inp-member-search').classList.remove('ac-selected');
+  document.getElementById('inp-member').value = '';
+  clearBtn.classList.toggle('show', raw.length > 0);
+
+  if (!q) { dd.classList.remove('open'); acResults = []; return; }
+
+  const esc = q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  acResults = members.filter(m =>
+    m.id.includes(q) || m.name.toUpperCase().includes(q)
+  ).slice(0, 10);
+
+  if (!acResults.length) {
+    dd.innerHTML = `<div class="ac-none">No match for "${raw}" — <a href="#" style="color:var(--accent)" onclick="showTab('members',null);return false">register →</a></div>`;
+    dd.classList.add('open'); acFocusIdx = -1; return;
+  }
+
+  dd.innerHTML = acResults.map((m, i) => {
+    const re = new RegExp(esc,'gi');
+    const idHl   = m.id.replace(new RegExp(esc,'g'), s=>`<span class="ac-hl">${s}</span>`);
+    const nameHl = m.name.replace(re, s=>`<span class="ac-hl">${s}</span>`);
+    const mds = mDebts(m.id);
+    const owed = mds.filter(d=>d.status==='outstanding').reduce((s,d)=>s+parseFloat(d.amount),0);
+    const hint = owed > 0 ? `owes ${fmt(owed)}` : 'clear';
+    return `<div class="ac-item" data-i="${i}" onmousedown="acSelect(${i})">
+      <span class="ac-id">${idHl}</span>
+      <span class="ac-name">${nameHl}</span>
+      <span style="margin-left:auto;font-family:var(--mono);font-size:.62rem;color:${owed>0?'#c9473b':'#2d6a4f'}">${hint}</span>
+    </div>`;
+  }).join('');
+  dd.classList.add('open'); acFocusIdx = -1;
+}
+
+function acKeydown(e) {
+  const dd = document.getElementById('ac-dropdown');
+  const items = dd.querySelectorAll('.ac-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault(); acFocusIdx = Math.min(acFocusIdx+1, items.length-1);
+    items.forEach((el,i) => el.classList.toggle('focused', i===acFocusIdx));
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault(); acFocusIdx = Math.max(acFocusIdx-1, 0);
+    items.forEach((el,i) => el.classList.toggle('focused', i===acFocusIdx));
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (acFocusIdx >= 0 && acResults[acFocusIdx]) acSelect(acFocusIdx);
+    else if (acResults.length === 1) acSelect(0);
+  } else if (e.key === 'Escape') {
+    dd.classList.remove('open');
+  }
+}
+
+function acSelect(i) {
+  const m = acResults[i]; if (!m) return;
+  const searchEl = document.getElementById('inp-member-search');
+  searchEl.value = `${m.id}  ${m.name}`;
+  document.getElementById('inp-member').value = m.id;
+  searchEl.classList.add('ac-selected');
+  document.getElementById('ac-clear-btn').classList.add('show');
+  document.getElementById('ac-dropdown').classList.remove('open');
+  acFocusIdx = -1;
+  // move focus to amount
+  setTimeout(()=>document.getElementById('inp-amount').focus(), 50);
+}
+
+function acClear() {
+  document.getElementById('inp-member-search').value = '';
+  document.getElementById('inp-member').value = '';
+  document.getElementById('inp-member-search').classList.remove('ac-selected');
+  document.getElementById('ac-clear-btn').classList.remove('show');
+  document.getElementById('ac-dropdown').classList.remove('open');
+  acResults = []; acFocusIdx = -1;
+  document.getElementById('inp-member-search').focus();
+}
+
+// Close dropdown on outside click
+document.addEventListener('click', e => {
+  if (!e.target.closest('.ac-wrap')) {
+    document.getElementById('ac-dropdown').classList.remove('open');
+  }
+});
+
+// ── Members Grid ───────────────────────────────────────────────────────────
+function renderMembers() {
+  const q=(document.getElementById('f-msearch').value||'').toUpperCase();
+  const grid=document.getElementById('mgrid');
+  const empty=document.getElementById('empty-members');
+  const list=members.filter(m=>!q||m.id.includes(q)||m.name.toUpperCase().includes(q));
+  if(!list.length){ grid.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  grid.innerHTML=list.map(m=>{
+    const mds=mDebts(m.id);
+    const total=mds.reduce((s,d)=>s+parseFloat(d.amount),0);
+    const paid =mds.reduce((s,d)=>s+debtPaid(d),0);
+    return `<div class="mcard" onclick="openMemberDetail('${m.id}')">
+      <button class="del-member" onclick="event.stopPropagation();deleteMember('${m.id}')" title="Delete member">✕</button>
+      <div class="mid">${m.id}</div>
+      <div class="mname">${m.name}</div>
+      <div class="mstats">
+        <div class="mst"><div class="msl">Total</div><div class="msv">${fmt(total)}</div></div>
+        <div class="mst"><div class="msl">Paid</div><div class="msv grn">${fmt(paid)}</div></div>
+        <div class="mst"><div class="msl">Owed</div><div class="msv red">${fmt(total-paid)}</div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Member Detail ──────────────────────────────────────────────────────────
+function openMemberDetail(id) {
+  const m=getMember(id); if(!m) return;
+  currentMid=id;
+  document.getElementById('md-id').textContent  =m.id;
+  document.getElementById('md-name').textContent=m.name;
+  refreshMemberDetail();
+  openModal('mo-member');
+}
+
+function refreshMemberDetail() {
+  const mds=sorted(mDebts(currentMid));
+  const total  = mds.reduce((s,d)=>s+parseFloat(d.amount),0);
+  const paidAmt= mds.reduce((s,d)=>s+debtPaid(d),0);
+  document.getElementById('md-total').textContent=fmt(total);
+  document.getElementById('md-paid').textContent =fmt(paidAmt);
+  document.getElementById('md-out').textContent  =fmt(total-paidAmt);
+  const tbody=document.getElementById('md-tbody');
+  const empty=document.getElementById('md-empty');
+  if(!mds.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  tbody.innerHTML=mds.map(d=>{
+    const st=debtStatus(d);
+    const paid=debtPaid(d);
+    const orig=parseFloat(d.amount);
+    const pct=orig>0?Math.min(100,paid/orig*100):0;
+    const badgeCls=st==='paid'?'b-paid':st==='partial'?'b-partial':'b-out';
+    const badgeTxt=st==='paid'?'paid':st==='partial'?`partial ${Math.round(pct)}%`:'outstanding';
+    return `<tr>
+    <td class="mono">${fdate(d.date)}</td>
+    <td class="mono" style="font-size:.75rem;color:#888">${d.debtId||'—'}</td>
+    <td>
+      <div class="amt ${st==='paid'?'paid':''}" style="font-family:var(--mono);font-weight:500">${fmt(orig)}</div>
+      ${st==='partial'?`<div style="font-family:var(--mono);font-size:.66rem;color:var(--green)">+${fmt(paid)} paid · ${fmt(orig-paid)} left</div>
+      <div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:var(--green)"></div></div>`:''}
+    </td>
+    <td style="color:#666;font-size:.8rem">${d.note||'—'}</td>
+    <td><span class="badge ${badgeCls}">${badgeTxt}</span></td>
+    <td><div class="acts">
+      <button class="btn btn-sm btn-green" onclick="openPaymentModal('${d.id}')" style="font-size:.68rem">💰 Pay</button>
+      <button class="btn btn-sm btn-danger" onclick="delFromModal('${d.id}')">✕</button>
+    </div></td>
+  </tr>`;
+  }).join('');
+}
+
+async function toggleFromModal(id) {
+  const d=debts.find(x=>x.id===id); if(!d) return;
+  d.status=d.status==='paid'?'outstanding':'paid';
+  await sb.from('debts').update({status: d.status}).eq('id', id);
+  refreshMemberDetail(); renderAll();
+  toast(d.status==='paid'?'✔ Marked paid':'↩ Marked outstanding');
+}
+
+async function delFromModal(id) {
+  if(!confirm('Remove this entry?')) return;
+  await sb.from('debts').delete().eq('id', id);
+  debts=debts.filter(x=>x.id!==id);
+  refreshMemberDetail(); renderAll(); toast('✔ Removed');
+}
+
+// ── Partial Payment ────────────────────────────────────────────────────────
+let currentPayDebtId = null;
+
+function debtPaid(d)      { return (d.payments||[]).reduce((s,p)=>s+parseFloat(p.amount),0); }
+function debtRemaining(d) { return Math.max(0, parseFloat(d.amount) - debtPaid(d)); }
+function debtStatus(d) {
+  const paid = debtPaid(d);
+  if (paid <= 0)                           return 'outstanding';
+  if (paid >= parseFloat(d.amount) - 0.001) return 'paid';
+  return 'partial';
+}
+
+function openPaymentModal(id) {
+  const d = debts.find(x=>x.id===id); if (!d) return;
+  currentPayDebtId = id;
+  const m       = getMember(d.member);
+  const alrPaid = debtPaid(d);
+  const remain  = debtRemaining(d);
+
+  document.getElementById('pp-member').textContent    = d.member + (m ? '  '+m.name : '');
+  document.getElementById('pp-debtid').textContent    = d.debtId || fdate(d.date);
+  document.getElementById('pp-original').textContent  = fmt(d.amount);
+  document.getElementById('pp-alreadypaid').textContent = fmt(alrPaid);
+  document.getElementById('pp-remaining').textContent = fmt(remain);
+  document.getElementById('pp-amount').value          = '';
+  document.getElementById('pp-amount').max            = remain;
+  document.getElementById('pp-date').value            = today();
+  document.getElementById('pp-note').value            = '';
+  document.getElementById('pp-preview').style.display = 'none';
+
+  // Payment history
+  renderPayHistory(d);
+  openModal('mo-payment');
+}
+
+function ppUpdatePreview() {
+  const d = debts.find(x=>x.id===currentPayDebtId); if (!d) return;
+  const amt = parseFloat(document.getElementById('pp-amount').value)||0;
+  const remain = debtRemaining(d);
+  const prev = document.getElementById('pp-preview');
+  if (amt <= 0) { prev.style.display='none'; return; }
+  prev.style.display = 'block';
+  const newRemain = Math.max(0, remain - amt);
+  const pct = Math.min(100, (debtPaid(d)+amt)/parseFloat(d.amount)*100);
+  const full = amt >= remain - 0.001;
+  document.getElementById('pp-preview-txt').textContent =
+    full ? `✔ Full payment — debt will be marked PAID` : `Partial payment of ${fmt(amt)}`;
+  document.getElementById('pp-preview-remain').textContent =
+    full ? 'Remaining: 0.00' : `Remaining after: ${fmt(newRemain)}`;
+  prev.style.background = full ? '#f0fdf4' : '#fffbeb';
+  prev.style.borderColor = full ? '#bbf7d0' : '#fde68a';
+}
+
+async function recordPayment() {
+  const d = debts.find(x=>x.id===currentPayDebtId); if (!d) return;
+  const amt  = parseFloat(document.getElementById('pp-amount').value);
+  const date = document.getElementById('pp-date').value;
+  const note = document.getElementById('pp-note').value.trim();
+  const remain = debtRemaining(d);
+
+  if (!amt || amt <= 0)          { toast('⚠ Enter a payment amount'); return; }
+  if (amt > remain + 0.001)      { toast(`⚠ Payment (${fmt(amt)}) exceeds remaining balance (${fmt(remain)})`); return; }
+  if (!date)                     { toast('⚠ Select a date'); return; }
+
+  if (!d.payments) d.payments = [];
+  d.payments.push({ id:uid(), amount:amt, date, note, createdAt:Date.now() });
+  d.status = debtStatus(d);
+
+  const { error } = await sb.from('debts').update({ payments: d.payments, status: d.status }).eq('id', d.id);
+  if(error){ toast('⚠ '+error.message); return; }
+  renderAll();
+  renderPayHistory(d);
+  // refresh remaining display
+  const alrPaid = debtPaid(d);
+  document.getElementById('pp-alreadypaid').textContent = fmt(alrPaid);
+  document.getElementById('pp-remaining').textContent   = fmt(debtRemaining(d));
+  document.getElementById('pp-amount').value = '';
+  document.getElementById('pp-preview').style.display = 'none';
+
+  const full = d.status === 'paid';
+  toast(full ? '✔ Full payment recorded — debt marked PAID' : `✔ Payment of ${fmt(amt)} recorded`, full?'#2d6a4f':'#b8860b');
+  if (full) setTimeout(()=>closeModal('mo-payment'), 1400);
+  if (currentMid) refreshMemberDetail();
+}
+
+async function deletePayment(debtId, payId) {
+  const d = debts.find(x=>x.id===debtId); if (!d) return;
+  if (!confirm('Remove this payment?')) return;
+  d.payments = (d.payments||[]).filter(p=>p.id!==payId);
+  d.status   = debtStatus(d);
+  const { error } = await sb.from('debts').update({ payments: d.payments, status: d.status }).eq('id', d.id);
+  if(error){ toast('⚠ '+error.message); return; }
+  renderAll();
+  // refresh modal
+  const alrPaid = debtPaid(d);
+  document.getElementById('pp-alreadypaid').textContent = fmt(alrPaid);
+  document.getElementById('pp-remaining').textContent   = fmt(debtRemaining(d));
+  document.getElementById('pp-amount').max              = debtRemaining(d);
+  renderPayHistory(d);
+  if (currentMid) refreshMemberDetail();
+  toast('✔ Payment removed');
+}
+
+function renderPayHistory(d) {
+  const wrap = document.getElementById('pp-history');
+  const pmts = (d.payments||[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+  if (!pmts.length) {
+    wrap.innerHTML = '<div style="color:#bbb;font-family:var(--mono);font-size:.72rem;padding:6px 0">No payments recorded yet</div>';
+    return;
+  }
+  wrap.innerHTML = pmts.map(p=>`
+    <div class="pay-hist-row">
+      <span class="pay-hist-amt">+ ${fmt(p.amount)}</span>
+      <span class="pay-hist-date">${fdate(p.date)}</span>
+      <span class="pay-hist-note">${p.note||'—'}</span>
+      <button class="pay-hist-del" onclick="deletePayment('${d.id}','${p.id}')" title="Remove payment">✕</button>
+    </div>`).join('');
+}
+
+
+async function addOrUpdateDebt() {
+  const member=document.getElementById('inp-member').value;
+  const amount=parseFloat(document.getElementById('inp-amount').value);
+  const date  =document.getElementById('inp-date').value;
+  const note  =document.getElementById('inp-note').value.trim();
+
+  if(!member)           { toast('⚠ Select a member'); return; }
+  if(!amount||amount<=0){ toast('⚠ Enter a valid amount'); return; }
+  if(!date)             { toast('⚠ Select a date'); return; }
+
+  // Build debt ID: memberID + DDMMYY  e.g. 256V120226
+  const ds=date.split('-'); // [yyyy, mm, dd]
+  const debtId=member+ds[2]+ds[1]+ds[0].slice(2); // DD + MM + YY
+
+  if(editingId) {
+    const idx=debts.findIndex(d=>d.id===editingId);
+    if(idx!==-1) {
+      debts[idx]={...debts[idx],member,amount,date,note,debtId};
+      const { error } = await sb.from('debts').update(toDb(debts[idx])).eq('id', editingId);
+      if(error){ toast('⚠ '+error.message); return; }
+    }
+    editingId=null;
+    document.getElementById('add-btn').textContent='Add Entry';
+    toast('✔ Updated');
+  } else {
+    const newDebt={id:uid(),debtId,member,amount,date,note,status:'outstanding',payments:[],createdAt:Date.now()};
+    const { error } = await sb.from('debts').insert(toDb(newDebt));
+    if(error){ toast('⚠ '+error.message); return; }
+    debts.push(newDebt);
+    toast('✔ Entry added');
+  }
+  document.getElementById('inp-member-search').value='';
+  document.getElementById('inp-member').value='';
+  document.getElementById('inp-member-search').classList.remove('ac-selected');
+  document.getElementById('ac-clear-btn').classList.remove('show');
+  acResults=[];
+  document.getElementById('inp-amount').value='';
+  document.getElementById('inp-note').value='';
+  document.getElementById('inp-date').value=today();
+  renderAll();
+}
+
+async function deleteDebt(id) {
+  if(!confirm('Remove this entry?')) return;
+  const { error } = await sb.from('debts').delete().eq('id', id);
+  if(error){ toast('⚠ '+error.message); return; }
+  debts=debts.filter(d=>d.id!==id); renderAll(); toast('✔ Removed');
+}
+
+async function togglePaid(id) {
+  const d=debts.find(d=>d.id===id); if(!d) return;
+  d.status=d.status==='paid'?'outstanding':'paid';
+  const { error } = await sb.from('debts').update({status: d.status}).eq('id', id);
+  if(error){ toast('⚠ '+error.message); return; }
+  renderAll();
+  toast(d.status==='paid'?'✔ Marked paid':'↩ Marked outstanding');
+}
+
+function startEdit(id) {
+  const d=debts.find(d=>d.id===id); if(!d) return;
+  const em = getMember(d.member);
+  document.getElementById('inp-member-search').value = em ? `${em.id} — ${em.name}` : d.member;
+  document.getElementById('inp-member').value = d.member;
+  document.getElementById('inp-member-search').classList.add('ac-selected');
+  document.getElementById('ac-clear-btn').classList.add('show');
+  document.getElementById('inp-amount').value=d.amount;
+  document.getElementById('inp-date').value  =d.date;
+  document.getElementById('inp-note').value  =d.note||'';
+  editingId=id;
+  document.getElementById('add-btn').textContent='Update Entry';
+  showTab('ledger',null);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// ── Filter-Member Autocomplete ─────────────────────────────────────────────
+let fmResults = []; let fmFocusIdx = -1;
+
+function fmInput() {
+  const raw = document.getElementById('f-member-search').value || '';
+  const q   = raw.trim().toUpperCase();
+  const dd  = document.getElementById('f-member-dropdown');
+  const clr = document.getElementById('f-member-clear');
+
+  document.getElementById('f-member').value = '';
+  clr.style.display = raw.length > 0 ? 'block' : 'none';
+  updateSpotlight('');
+
+  if (!q) { dd.classList.remove('open'); fmResults = []; renderTable(); return; }
+
+  fmResults = members.filter(m => m.id.includes(q) || m.name.toUpperCase().includes(q)).slice(0,10);
+
+  if (!fmResults.length) {
+    dd.innerHTML = `<div class="ac-none">No member matches "${raw}"</div>`;
+    dd.classList.add('open'); fmFocusIdx = -1; renderTable(); return;
+  }
+
+  const esc = q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  dd.innerHTML = fmResults.map((m, i) => {
+    const idHl   = m.id.replace(new RegExp(esc,'g'), s=>`<span class="ac-hl">${s}</span>`);
+    const nameHl = m.name.replace(new RegExp(esc,'gi'), s=>`<span class="ac-hl">${s}</span>`);
+    const mds    = mDebts(m.id);
+    const owed   = mds.filter(d=>d.status==='outstanding').reduce((s,d)=>s+parseFloat(d.amount),0);
+    return `<div class="ac-item" data-i="${i}" onmousedown="fmSelect(${i})">
+      <span class="ac-id">${idHl}</span>
+      <span class="ac-name">${nameHl}</span>
+      <span style="margin-left:auto;font-family:var(--mono);font-size:.62rem;color:${owed>0?'#c9473b':'#2d6a4f'}">${owed>0?'owes '+fmt(owed):'clear'}</span>
+    </div>`;
+  }).join('');
+  dd.classList.add('open'); fmFocusIdx = -1;
+}
+
+function fmKeydown(e) {
+  const items = document.getElementById('f-member-dropdown').querySelectorAll('.ac-item');
+  if (e.key==='ArrowDown') { e.preventDefault(); fmFocusIdx=Math.min(fmFocusIdx+1,items.length-1); items.forEach((el,i)=>el.classList.toggle('focused',i===fmFocusIdx)); }
+  else if (e.key==='ArrowUp') { e.preventDefault(); fmFocusIdx=Math.max(fmFocusIdx-1,0); items.forEach((el,i)=>el.classList.toggle('focused',i===fmFocusIdx)); }
+  else if (e.key==='Enter') { e.preventDefault(); if(fmFocusIdx>=0&&fmResults[fmFocusIdx]) fmSelect(fmFocusIdx); else if(fmResults.length===1) fmSelect(0); }
+  else if (e.key==='Escape') { document.getElementById('f-member-dropdown').classList.remove('open'); }
+}
+
+function fmSelect(i) {
+  const m = fmResults[i]; if (!m) return;
+  document.getElementById('f-member-search').value = `${m.id}  ${m.name}`;
+  document.getElementById('f-member').value = m.id;
+  document.getElementById('f-member-search').classList.add('ac-selected');
+  document.getElementById('f-member-clear').style.display = 'block';
+  document.getElementById('f-member-dropdown').classList.remove('open');
+  fmFocusIdx = -1;
+  updateSpotlight(m.id);
+  renderTable();
+}
+
+function clearMemberFilter() {
+  document.getElementById('f-member-search').value = '';
+  document.getElementById('f-member').value = '';
+  document.getElementById('f-member-search').classList.remove('ac-selected');
+  document.getElementById('f-member-clear').style.display = 'none';
+  document.getElementById('f-member-dropdown').classList.remove('open');
+  fmResults = []; fmFocusIdx = -1;
+  document.getElementById('spotlight-panel').style.display = 'none';
+  renderTable();
+}
+
+function updateSpotlight(id) {
+  const sp = document.getElementById('spotlight-panel');
+  if (!id) { sp.style.display = 'none'; return; }
+  const m   = getMember(id); if (!m) { sp.style.display='none'; return; }
+  const mds = mDebts(id);
+  const total = mds.reduce((s,d)=>s+parseFloat(d.amount),0);
+  const paid  = mds.reduce((s,d)=>s+debtPaid(d),0);
+  document.getElementById('sp-id').textContent    = m.id;
+  document.getElementById('sp-name').textContent  = m.name;
+  document.getElementById('sp-total').textContent = fmt(total);
+  document.getElementById('sp-paid').textContent  = fmt(paid);
+  document.getElementById('sp-out').textContent   = fmt(total - paid);
+  sp.style.display = 'block';
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#f-member-search') && !e.target.closest('#f-member-dropdown'))
+    document.getElementById('f-member-dropdown').classList.remove('open');
+});
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function renderTable() {
+  const mf = (document.getElementById('f-member').value||'').toUpperCase().trim();
+  const sf = document.getElementById('f-status').value;
+  const rows = sorted(debts).filter(d=>{
+    if(mf && d.member !== mf) return false;
+    if(sf!=='all' && debtStatus(d)!==sf) return false;
+    return true;
+  });
+  const tbody=document.getElementById('debt-tbody');
+  const empty=document.getElementById('empty-debts');
+  if(!rows.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  tbody.innerHTML=rows.map(d=>{
+    const m=getMember(d.member);
+    const st=debtStatus(d);
+    const paidAmt=debtPaid(d);
+    const orig=parseFloat(d.amount);
+    const pct=orig>0?Math.min(100,paidAmt/orig*100):0;
+    const badgeCls=st==='paid'?'b-paid':st==='partial'?'b-partial':'b-out';
+    const badgeTxt=st==='paid'?'paid':st==='partial'?`partial ${Math.round(pct)}%`:'outstanding';
+    const amtDisplay = st==='partial'
+      ? `<span style="color:var(--accent);font-family:var(--mono);font-size:.78rem">${fmt(orig)}</span>
+         <div style="font-family:var(--mono);font-size:.68rem;color:var(--green)">+${fmt(paidAmt)} paid</div>
+         <div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:var(--green)"></div></div>`
+      : `<span class="amt ${st==='paid'?'paid':''}" style="font-family:var(--mono);font-weight:500">${fmt(orig)}</span>`;
+    return `<tr>
+      <td class="mono">${fdate(d.date)}</td>
+      <td class="mono" style="font-size:.74rem;color:#888">${d.debtId||'—'}</td>
+      <td class="mono" style="font-weight:500;letter-spacing:1px;cursor:pointer;color:var(--accent)"
+        onclick="openMemberDetail('${d.member}')" title="View profile">${d.member}</td>
+      <td style="color:#555">${m?m.name:'Unknown'}</td>
+      <td>${amtDisplay}</td>
+      <td style="color:#666;font-size:.8rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+        title="${d.note||''}">${d.note||'—'}</td>
+      <td><span class="badge ${badgeCls}">${badgeTxt}</span></td>
+      <td><div class="acts">
+        <button class="btn btn-sm btn-green" onclick="openPaymentModal('${d.id}')" title="Record payment" style="font-size:.68rem">💰 Pay</button>
+        <button class="btn btn-sm btn-ghost" onclick="startEdit('${d.id}')">✏</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteDebt('${d.id}')">✕</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderSummary() {
+  const total  = debts.reduce((s,d)=>s+parseFloat(d.amount),0);
+  const paid   = debts.reduce((s,d)=>s+debtPaid(d),0);
+  const pc     = debts.filter(d=>debtStatus(d)==='paid').length;
+  const oc     = debts.filter(d=>debtStatus(d)!=='paid').length;
+  document.getElementById('s-total').textContent=fmt(total);
+  document.getElementById('s-paid').textContent =fmt(paid);
+  document.getElementById('s-out').textContent  =fmt(total-paid);
+  document.getElementById('sc-total').textContent=`${debts.length} entr${debts.length===1?'y':'ies'}`;
+  document.getElementById('sc-paid').textContent =`${pc} fully paid`;
+  document.getElementById('sc-out').textContent  =`${oc} outstanding`;
+}
+
+function renderAll() { renderSummary(); renderTable(); renderMembers(); }
+
+// ══════════════════════════════════════════════════════
+// ── BATCH IMPORT ──────────────────────────────────────
+// ══════════════════════════════════════════════════════
+
+function dzOver(e)  { e.preventDefault(); document.getElementById('drop-zone').classList.add('drag-over'); }
+function dzLeave()  { document.getElementById('drop-zone').classList.remove('drag-over'); }
+function dzDrop(e)  { e.preventDefault(); dzLeave(); handleFile(e.dataTransfer.files[0]); }
+
+function handleFile(file) {
+  if(!file) return;
+  const ext=file.name.split('.').pop().toLowerCase();
+  if(!['xlsx','xls','csv'].includes(ext)){ toast('⚠ Please upload an .xlsx, .xls or .csv file','#b8860b'); return; }
+
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try {
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      parseImport(raw, file.name);
+    } catch(err) {
+      toast('⚠ Could not read file: '+err.message,'#b8860b');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── Detect if CSV is an OLA export ────────────────────────────────────────
+function isOlaExport(raw) {
+  if (!raw.length) return false;
+  const h = raw[0].map(c => String(c).toLowerCase().replace(/\s+/g,' ').trim());
+  // OLA export has: date, debt id, member id, member name, amount, balance, note, status
+  // Match loosely so slight header variations (spaces, caps) still work
+  const has = keyword => h.some(col => col.includes(keyword));
+  return has('debt id') || has('debt_id') || has('member id') || has('member_id') || has('balance') || has('member name') || has('member_name');
+}
+
+function parseDateDMY(raw) {
+  // Handles: Excel serial (46113), DD/MM/YY, DD/MM/YYYY, YYYY-MM-DD, DD-MM-YY
+  if (raw === null || raw === undefined || raw === '') return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+
+  // Excel / Google Sheets serial number — pure integer 4-5 digits
+  if (/^\d{4,5}$/.test(s)) {
+    const serial = parseInt(s);
+    if (serial < 1 || serial > 99999) return null;
+    // Excel uses Dec 30 1899 as day 0 (accounting for the 1900 leap year bug)
+    const ms = (serial - 1) * 86400000;
+    const d = new Date(Date.UTC(1900, 0, 1) + ms);
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 10);
+  }
+
+  // DD/MM/YY or DD/MM/YYYY (most common from OLA export)
+  const slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (slash) {
+    const dd = slash[1].padStart(2,'0');
+    const mm = slash[2].padStart(2,'0');
+    const yy = slash[3];
+    const year = yy.length <= 2 ? (parseInt(yy) >= 0 ? 2000 + parseInt(yy) : 1900 + parseInt(yy)) : parseInt(yy);
+    const iso = `${year}-${mm}-${dd}`;
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? null : iso;
+  }
+
+  // DD-MM-YY or DD-MM-YYYY
+  const dash = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
+  if (dash) {
+    const dd = dash[1].padStart(2,'0');
+    const mm = dash[2].padStart(2,'0');
+    const yy = dash[3];
+    const year = yy.length <= 2 ? 2000 + parseInt(yy) : parseInt(yy);
+    const iso = `${year}-${mm}-${dd}`;
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? null : iso;
+  }
+
+  // ISO YYYY-MM-DD (already correct format)
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const d = new Date(s.slice(0,10));
+    return isNaN(d.getTime()) ? null : s.slice(0,10);
+  }
+
+  return null;
+}
+
+function parseImport(raw, filename) {
+  importRows = [];
+  const existingDebtIds = new Set(debts.map(d => d.debtId).filter(Boolean));
+
+  // ── Detect format ──────────────────────────────────────────────────────
+  const ola = isOlaExport(raw);
+
+  if (ola) {
+    // Map column indices from header
+    const h = raw[0].map(c => String(c).toLowerCase().trim());
+    const ci = {
+      date:       h.findIndex(c=>c==='date'),
+      debtId:     h.findIndex(c=>c.includes('debt id')||c==='debt id'),
+      memberId:   h.findIndex(c=>c.includes('member id')||c==='member id'),
+      memberName: h.findIndex(c=>c.includes('member name')||c==='member name'),
+      amount:     h.findIndex(c=>c==='amount'),
+      balance:    h.findIndex(c=>c==='balance'),
+      note:       h.findIndex(c=>c==='note'),
+      status:     h.findIndex(c=>c==='status'),
+    };
+
+    for (let i = 1; i < raw.length; i++) {
+      const row = raw[i];
+      if (row.every(c => String(c).trim() === '')) continue;
+      // Skip summary rows (lines like "SUMMARY", "Total", "Exported")
+      const first = String(row[0]||'').trim().toUpperCase();
+      // Skip blank rows and known footer/summary keywords
+      if (['SUMMARY','TOTAL','PAID','OUTSTANDING','EXPORTED'].includes(first)) continue;
+      // Skip rows that look like "Exported, 13 Mar 2026" — first cell is "Exported" (case-insensitive)
+      if (/^exported$/i.test(String(row[0]||'').trim())) continue;
+      // Skip rows where first cell looks like a month/date string but not DD/MM/YYYY
+      if (/^\d{1,2}\s+[a-z]{3}/i.test(String(row[0]||'').trim())) continue;
+
+      const debtId     = ci.debtId     >= 0 ? String(row[ci.debtId]||'').trim().toUpperCase()   : '';
+      const userId     = ci.memberId   >= 0 ? String(row[ci.memberId]||'').trim().toUpperCase()  : '';
+      const memberName = ci.memberName >= 0 ? String(row[ci.memberName]||'').trim()               : '';
+      const amtRaw     = ci.amount     >= 0 ? row[ci.amount] : null;
+      const balRaw     = ci.balance    >= 0 ? row[ci.balance] : null;
+      const note       = ci.note       >= 0 ? String(row[ci.note]||'').trim()                    : '';
+      const statusRaw  = ci.status     >= 0 ? String(row[ci.status]||'').trim().toLowerCase()    : 'outstanding';
+      const dateRaw    = ci.date       >= 0 ? (row[ci.date] !== undefined ? row[ci.date] : '')   : '';
+
+      const r = { rowNum: i+1, userId, debtId, note, memberName, isOla: true, status:'new', issue:'' };
+
+      // Validate member ID
+      if (!/^\d{3}[A-Z]$/.test(userId)) {
+        r.status='error'; r.issue='Invalid Member ID'; importRows.push(r); continue;
+      }
+
+      // Parse date (DD/MM/YYYY from export)
+      const parsedDate = parseDateDMY(dateRaw);
+      if (!parsedDate) {
+        r.status='error'; r.issue=`Date "${dateRaw}" not recognised — expected DD/MM/YY`; importRows.push(r); continue;
+      }
+      r.parsedDate = parsedDate;
+
+      // Parse amounts
+      const amount = parseFloat(String(amtRaw).replace(/[^\d.]/g,''));
+      if (isNaN(amount) || amount <= 0) {
+        r.status='error'; r.issue='Invalid amount'; importRows.push(r); continue;
+      }
+      r.amount = amount;
+
+      const balance = balRaw !== null && balRaw !== '' ? parseFloat(String(balRaw).replace(/[^\d.]/g,'')) : amount;
+      r.balance = isNaN(balance) ? amount : balance;
+      r.debtStatus = statusRaw; // 'outstanding','partial','paid'
+
+      // Check duplicate
+      if (existingDebtIds.has(debtId)) {
+        r.status='dup'; r.issue='Debt ID already in ledger';
+      }
+
+      importRows.push(r);
+    }
+
+  } else {
+    // ── Original Excel format ────────────────────────────────────────────
+    let startRow = 0;
+    if (raw.length > 0) {
+      const first = raw[0].map(c => String(c).toLowerCase());
+      if (first.some(c => c.includes('user')||c.includes('id')||c.includes('debt')||c.includes('amount')||c.includes('note')))
+        startRow = 1;
+    }
+
+    for (let i = startRow; i < raw.length; i++) {
+      const row = raw[i];
+      if (row.every(c => String(c).trim() === '')) continue;
+
+      const userId = String(row[0]||'').trim().toUpperCase();
+      const debtId = String(row[1]||'').trim().toUpperCase();
+      const amtRaw = row[2];
+      const note   = String(row[3]||'').trim();
+
+      const r = { rowNum:i+1, userId, debtId, amtRaw, note, status:'new', issue:'' };
+
+      if (!/^\d{3}[A-Z]$/.test(userId)) {
+        r.status='error'; r.issue='Invalid User ID (need 3 digits + 1 letter)';
+        importRows.push(r); continue;
+      }
+
+      const parsedDate = parseDebtId(debtId, userId);
+      if (!parsedDate) {
+        r.status='error'; r.issue=`Cannot parse date from Debt ID "${debtId}"`;
+        importRows.push(r); continue;
+      }
+      r.parsedDate = parsedDate;
+
+      const amount = parseFloat(amtRaw);
+      if (isNaN(amount) || amount <= 0) {
+        r.status='error'; r.issue='Invalid or missing amount';
+        importRows.push(r); continue;
+      }
+      r.amount = amount;
+
+      if (existingDebtIds.has(debtId)) {
+        r.status='dup'; r.issue='Debt ID already in ledger';
+      }
+
+      importRows.push(r);
+    }
+  }
+
+  renderPreview();
+  document.getElementById('preview-panel').style.display='block';
+  document.getElementById('preview-panel').scrollIntoView({behavior:'smooth',block:'start'});
+
+  const newCount=importRows.filter(r=>r.status==='new').length;
+  const errCount=importRows.filter(r=>r.status==='error').length;
+  const dupCount=importRows.filter(r=>r.status==='dup').length;
+  toast(`✔ ${filename}: ${importRows.length} rows parsed — ${newCount} new, ${dupCount} dup, ${errCount} errors`,'#1e3a8a');
+}
+
+function renderPreview() {
+  const filter=document.getElementById('pf-status').value;
+  const rows=importRows.filter(r=>filter==='all'||r.status===filter);
+
+  const newN=importRows.filter(r=>r.status==='new').length;
+  const dupN=importRows.filter(r=>r.status==='dup').length;
+  const errN=importRows.filter(r=>r.status==='error').length;
+  const memN=new Set(importRows.filter(r=>r.status==='new').map(r=>r.userId)).size;
+
+  document.getElementById('preview-stats').innerHTML=`
+    <span class="pstat ps-new">${newN} new</span>
+    <span class="pstat ps-dup">${dupN} duplicate</span>
+    <span class="pstat ps-err">${errN} error</span>
+    <span class="pstat ps-mem">${memN} unique members</span>`;
+
+  document.getElementById('import-btn').textContent=`✔ Import ${newN} New Row${newN!==1?'s':''}`;
+  document.getElementById('import-btn').disabled=newN===0;
+
+  const tbody=document.getElementById('preview-tbody');
+  if(!rows.length){ tbody.innerHTML=`<tr><td colspan="9" class="empty">No rows match filter</td></tr>`; return; }
+
+  tbody.innerHTML=rows.map(r=>{
+    const cls=r.status==='error'?'row-err':r.status==='dup'?'row-dup':'row-new';
+    const badgeCls=r.status==='new'?'b-new':r.status==='dup'?'b-dup':'b-out';
+    const dsCls = r.debtStatus==='paid'?'b-paid':r.debtStatus==='partial'?'b-partial':'b-out';
+    const balDisplay = r.isOla && r.balance!=null ? fmt(r.balance) : '—';
+    const nameDisplay = r.memberName || '—';
+    return `<tr class="${cls}">
+      <td class="mono" style="color:#aaa;font-size:.72rem">${r.rowNum}</td>
+      <td class="mono" style="font-weight:500">${r.userId||'—'}</td>
+      <td style="font-size:.8rem;color:#555">${nameDisplay}</td>
+      <td class="mono" style="font-size:.74rem;color:#888">${r.debtId||'—'}</td>
+      <td class="mono">${r.parsedDate?fdate(r.parsedDate):'—'}</td>
+      <td class="mono" style="color:var(--accent)">${r.amount!=null?fmt(r.amount):'—'}</td>
+      <td class="mono" style="color:var(--green)">${balDisplay}</td>
+      <td>
+        <span class="badge ${badgeCls}" style="margin-right:3px">${r.status}</span>
+        ${r.debtStatus?`<span class="badge ${dsCls}" style="font-size:.54rem">${r.debtStatus}</span>`:''}
+      </td>
+      <td style="font-size:.76rem;color:#b91c1c">${r.issue||''}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function commitImport() {
+  const newRows = importRows.filter(r => r.status === 'new');
+  if (!newRows.length) { toast('No new rows to import'); return; }
+
+  const knownIds = new Set(members.map(m => m.id));
+  let newMemberCount = 0;
+  let updatedMemberCount = 0;
+
+  newRows.forEach(r => {
+    // Register or update member
+    if (!knownIds.has(r.userId)) {
+      const name = (r.isOla && r.memberName) ? r.memberName : `Member ${r.userId}`;
+      members.push({ id: r.userId, name, notes: 'Imported', createdAt: Date.now() });
+      knownIds.add(r.userId);
+      newMemberCount++;
+    } else if (r.isOla && r.memberName) {
+      // Update existing member name if we have a real name from OLA export
+      const existing = members.find(m => m.id === r.userId);
+      if (existing && existing.name === `Member ${r.userId}`) {
+        existing.name = r.memberName;
+        updatedMemberCount++;
+      }
+    }
+  });
+
+  // debts inserted via Supabase below
+
+  // Upsert members to Supabase
+  const membersToUpsert = [...new Set(newRows.map(r=>r.userId))].map(id => {
+    const m = members.find(x=>x.id===id);
+    return memberToDb(m);
+  });
+  if (membersToUpsert.length) await sb.from('members').upsert(membersToUpsert);
+
+  // Insert debts to Supabase
+  const debtsToInsert = newRows.map(r => {
+    const debtStatus = r.isOla ? (r.debtStatus || 'outstanding') : 'outstanding';
+    const payments = [];
+    if (r.isOla && r.amount != null && r.balance != null) {
+      const paid = parseFloat((r.amount - r.balance).toFixed(2));
+      if (paid > 0.001) payments.push({ id:uid(), amount:paid, date:r.parsedDate, note:'Restored from CSV', createdAt:Date.now() });
+    }
+    const d = { id:uid(), debtId:r.debtId, member:r.userId, amount:r.amount, date:r.parsedDate, note:r.note, status:debtStatus, payments, createdAt:Date.now() };
+    debts.push(d);
+    return toDb(d);
+  });
+
+  const { error: dErr } = await sb.from('debts').insert(debtsToInsert);
+  if (dErr) { toast('⚠ Import error: ' + dErr.message); return; }
+
+  populateSelect(); renderAll();
+  clearImport();
+
+  let msg = `✔ Imported ${debtsToInsert.length} entr${debtsToInsert.length===1?'y':'ies'}`;
+  if (newMemberCount)     msg += ` · ${newMemberCount} new member${newMemberCount===1?'':'s'}`;
+  if (updatedMemberCount) msg += ` · ${updatedMemberCount} name${updatedMemberCount===1?'':'s'} updated`;
+  toast(msg, '#2d6a4f');
+  showTab('ledger', null);
+}
+
+function clearImport() {
+  importRows=[];
+  document.getElementById('preview-panel').style.display='none';
+  document.getElementById('file-input').value='';
+}
+
+// ── Download Template ──────────────────────────────────────────────────────
+function downloadTemplate() {
+  const wb=XLSX.utils.book_new();
+  const data=[
+    ['User ID','Debt ID','Amount','Notes'],
+    ['256V','256V120226','15000','Monthly subscription'],
+    ['782Y','782Y050126','8500','Equipment rental'],
+    ['103A','103A280126','22000',''],
+  ];
+  const ws=XLSX.utils.aoa_to_sheet(data);
+  ws['!cols']=[{wch:12},{wch:18},{wch:12},{wch:30}];
+  XLSX.utils.book_append_sheet(wb,ws,'Debts');
+  XLSX.writeFile(wb,'OLA_Template.xlsx');
+  toast('✔ Template downloaded');
+}
+
+
+// ── Export Dropdown ────────────────────────────────────────────────────────
+let exportType = 'pdf'; // 'pdf' or 'csv'
+
+function toggleExportMenu(e, type) {
+  exportType = type;
+  const menu = document.getElementById('export-menu');
+  const title = document.getElementById('export-menu-title');
+  title.textContent = 'Export as ' + type.toUpperCase();
+  const isOpen = menu.style.display === 'block';
+  menu.style.display = isOpen ? 'none' : 'block';
+  e.stopPropagation();
+}
+
+document.addEventListener('click', () => {
+  const m = document.getElementById('export-menu');
+  if(m) m.style.display = 'none';
+});
+
+function doExport(filter) {
+  document.getElementById('export-menu').style.display = 'none';
+  // filter: 'unpaid' | 'paid' | 'all'
+  let subset;
+  if(filter === 'unpaid') subset = debts.filter(d=>{ const s=debtStatus(d); return s==='outstanding'||s==='partial'; });
+  else if(filter === 'paid') subset = debts.filter(d=>debtStatus(d)==='paid');
+  else subset = [...debts];
+
+  if(!subset.length){ toast('⚠ No entries match that filter'); return; }
+
+  const label = filter==='unpaid'?'Outstanding_Partial':filter==='paid'?'Paid':'All';
+  if(exportType==='csv') exportCSV(subset, label);
+  else exportPDF(subset, label);
+}
+
+// ── Export Helpers ─────────────────────────────────────────────────────────
+function dlBlob(content,type,filename) {
+  const blob=new Blob([content],{type});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── CSV ────────────────────────────────────────────────────────────────────
+function exportCSV(subset, label) {
+  const rows = sorted(subset);
+  const lines=[
+    ['Date','Debt ID','Member ID','Member Name','Amount','Balance','Note','Status'].join(','),
+    ...rows.map(d=>{
+      const m=getMember(d.member);
+      const st=debtStatus(d);
+      const bal=st==='paid'?'0.00':st==='partial'?fmt(debtRemaining(d)):fmt(d.amount);
+      return [fdate(d.date),d.debtId||'',d.member,
+        `"${(m?m.name:'Unknown').replace(/"/g,'""')}"`,fmt(d.amount),bal,
+        `"${(d.note||'').replace(/"/g,'""')}"`,st].join(',');
+    }),
+    ``,`Exported,"${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}"`
+  ].join('\n');
+  dlBlob(lines,'text/csv',`OLA_${label}_${today()}.csv`);
+  toast(`✔ ${label} CSV exported`);
+}
+
+// ── PDF — column layout: date → ID → balance ────────────────────────────────
+function exportPDF(subset, label) {
+  if(!subset.length){ toast('⚠ No entries'); return; }
+
+  const doc = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
+  const PW=210, PH=297, ML=12, MR=12, MT=8, MB=10;
+  const CW  = PW-ML-MR;        // 186mm usable width
+  const COLS= 3;                // 3 entries side-by-side per date block
+  const CWC = CW/COLS;         // ~62mm per column
+  const DH  = 6;               // date heading height
+  const IH  = 4.2;             // ID line height
+  const BH  = 4.2;             // balance line height
+  const EH  = IH+BH+1;        // total height per entry cell
+  const GAP = 2;               // gap between date blocks
+  const dateStr = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+
+  // Group debts by date, newest first
+  const byDate={};
+  sorted(subset).forEach(d=>{
+    const k=d.date||'0000-00-00';
+    if(!byDate[k]) byDate[k]=[];
+    byDate[k].push(d);
+  });
+  const dateKeys=Object.keys(byDate).sort((a,b)=>b.localeCompare(a));
+
+  let y=MT, pg=1;
+
+  function pageHeader() {
+    doc.setFillColor(26,26,46); doc.rect(0,0,PW,11,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(244,241,235);
+    doc.text(`OLA — ${label} Report`, ML, 7.5);
+    doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(160,160,160);
+    doc.text(`${dateStr}  ·  pg ${pg}`, PW-MR, 7.5, {align:'right'});
+    y=14;
+  }
+
+  function pageFooter() {
+    doc.setFontSize(6); doc.setTextColor(190,190,190); doc.setFont('helvetica','normal');
+    doc.text(`OLA`, ML, PH-3);
+    doc.text(`Page ${pg}`, PW-MR, PH-3, {align:'right'});
+  }
+
+  function checkY(needed) {
+    if(y+needed > PH-MB-6) {
+      pageFooter(); doc.addPage(); pg++; pageHeader();
+    }
+  }
+
+  pageHeader();
+
+  dateKeys.forEach(dk=>{
+    const entries=byDate[dk];
+    const numRows=Math.ceil(entries.length/COLS);
+    const blockH=DH+numRows*EH+GAP;
+
+    checkY(blockH);
+
+    // ── Date heading row ──
+    doc.setFillColor(26,26,46);
+    doc.rect(ML, y, CW, DH,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(244,241,235);
+    doc.text(fdate(dk), ML+CW/2, y+DH-1.6, {align:'center'});
+    y+=DH;
+
+    // ── Entry grid: each cell = ID line + balance line ──
+    for(let row=0; row<numRows; row++){
+      const rowY=y+row*EH;
+
+      // row background (alternate)
+      if(row%2===0){
+        doc.setFillColor(250,249,246);
+        doc.rect(ML, rowY, CW, EH,'F');
+      }
+
+      for(let col=0; col<COLS; col++){
+        const idx=row*COLS+col;
+        if(idx>=entries.length) break;
+        const d=entries[idx];
+        const x=ML+col*CWC+2;
+        const st=debtStatus(d);
+        const isPaid=st==='paid';
+        const isPartial=st==='partial';
+
+        const idColor   = isPaid?[45,106,79]:isPartial?[160,100,0]:[26,26,46];
+        const balColor  = isPaid?[45,106,79]:isPartial?[160,100,0]:[180,50,35];
+        const prefix    = isPaid?'✓ ':isPartial?'~ ':'';
+        const dispBal   = isPartial ? fmt(debtRemaining(d)) : fmt(d.amount);
+
+        // ID line
+        doc.setFont('helvetica','bold'); doc.setFontSize(7.5);
+        doc.setTextColor(...idColor);
+        doc.text(prefix+d.member, x, rowY+IH-0.5);
+
+        // Balance line
+        doc.setFont('helvetica','normal'); doc.setFontSize(7);
+        doc.setTextColor(...balColor);
+        doc.text(dispBal, x, rowY+IH+BH-0.5);
+
+        // column divider
+        if(col<COLS-1){
+          doc.setDrawColor(220,215,205); doc.setLineWidth(0.18);
+          doc.line(ML+(col+1)*CWC, rowY, ML+(col+1)*CWC, rowY+EH);
+        }
+      }
+
+      // horizontal row divider
+      doc.setDrawColor(230,226,218); doc.setLineWidth(0.15);
+      doc.line(ML, rowY+EH, ML+CW, rowY+EH);
+    }
+
+    // outer border around the date block entries
+    doc.setDrawColor(190,184,172); doc.setLineWidth(0.3);
+    doc.rect(ML, y, CW, numRows*EH);
+
+    y+=numRows*EH+GAP;
+  });
+
+  pageFooter();
+  doc.save(`OLA_${label}_${today()}.pdf`);
+  toast(`✔ ${label} PDF exported`);
+}
+
+// ── CSV Member ─────────────────────────────────────────────────────────────
+function exportMemberCSV() {
+  const m=getMember(currentMid); if(!m) return;
+  const mds=sorted(mDebts(currentMid));
+  if(!mds.length){ toast('⚠ No entries for this member'); return; }
+  const total=mds.reduce((s,d)=>s+parseFloat(d.amount),0);
+  const paid =mds.filter(d=>d.status==='paid').reduce((s,d)=>s+parseFloat(d.amount),0);
+  const lines=[
+    `Member ID:,${m.id}`,`Name:,"${m.name}"`,`Notes:,"${m.notes||''}"`,
+    '',['Date','Debt ID','Amount','Note','Status'].join(','),
+    ...mds.map(d=>[fdate(d.date),d.debtId||'',fmt(d.amount),`"${(d.note||'').replace(/"/g,'""')}"`,d.status].join(',')),
+    '','SUMMARY',`Total,${fmt(total)}`,`Paid,${fmt(paid)}`,`Outstanding,${fmt(total-paid)}`
+  ].join('\n');
+  dlBlob(lines,'text/csv',`Member_${m.id}_${today()}.csv`);
+  toast('✔ Member CSV exported');
+}
+
+// ── PDF Member ─────────────────────────────────────────────────────────────
+function exportMemberPDF() {
+  const m=getMember(currentMid); if(!m) return;
+  const mds=sorted(mDebts(currentMid));
+  if(!mds.length){ toast('⚠ No entries for this member'); return; }
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+  const total=mds.reduce((s,d)=>s+parseFloat(d.amount),0);
+  const paid =mds.filter(d=>d.status==='paid').reduce((s,d)=>s+parseFloat(d.amount),0);
+
+  doc.setFillColor(26,26,46); doc.rect(0,0,210,24,'F');
+  doc.setTextColor(244,241,235); doc.setFontSize(14); doc.setFont('helvetica','bold');
+  doc.text('OLA — Member Statement',14,15);
+  doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(150,150,150);
+  doc.text(`Exported: ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})}`,130,15);
+
+  doc.setFontSize(13); doc.setTextColor(26,26,46); doc.setFont('helvetica','bold');
+  doc.text(`${m.id}  —  ${m.name}`,14,33);
+  if(m.notes){doc.setFontSize(8.5);doc.setFont('helvetica','italic');doc.setTextColor(120,120,120);doc.text(m.notes,14,40);}
+
+  const sy=m.notes?45:39;
+  const boxes=[['Total Debt',fmt(total),[255,235,235]],['Total Paid',fmt(paid),[216,243,220]],['Outstanding',fmt(total-paid),[255,248,220]]];
+  boxes.forEach((b,i)=>{
+    const x=14+i*64;
+    doc.setFillColor(...b[2]); doc.roundedRect(x,sy,60,16,2,2,'F');
+    doc.setFontSize(7); doc.setFont('helvetica','normal'); doc.setTextColor(120,120,120);
+    doc.text(b[0].toUpperCase(),x+4,sy+6);
+    doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(26,26,46);
+    doc.text(b[1],x+4,sy+13);
+  });
+
+  doc.autoTable({
+    startY:sy+22,
+    head:[['Date','Debt ID','Amount','Note','Status']],
+    body:mds.map(d=>[fdate(d.date),d.debtId||'—',fmt(d.amount),d.note||'—',d.status.toUpperCase()]),
+    styles:{font:'helvetica',fontSize:9,cellPadding:3.5},
+    headStyles:{fillColor:[26,26,46],textColor:244,fontStyle:'bold'},
+    alternateRowStyles:{fillColor:[244,241,235]},
+    columnStyles:{2:{halign:'right'},4:{halign:'center'}},
+    didParseCell:data=>{
+      if(data.section==='body'&&data.column.index===4){
+        if(data.cell.raw==='PAID'){data.cell.styles.textColor=[45,106,79];data.cell.styles.fontStyle='bold';}
+        if(data.cell.raw==='OUTSTANDING'){data.cell.styles.textColor=[201,71,59];data.cell.styles.fontStyle='bold';}
+      }
+    }
+  });
+  doc.save(`Member_${m.id}_${today()}.pdf`);
+  toast('✔ Member PDF exported');
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────────
+document.getElementById('inp-date').value=today();
+
+// Check for existing session on page load
+(async () => {
+  setLoading('Checking session…');
+
+  // Safety net: if Supabase never responds (iOS WebKit, network issues,
+  // Supabase cold start), fall through to login screen after 6 seconds
+  const fallbackTimer = setTimeout(() => {
+    console.warn('OLA: session check timed out — showing login screen');
+    showLoginScreen();
+  }, 6000);
+
+  try {
+    const { data, error } = await sb.auth.getSession();
+    clearTimeout(fallbackTimer);
+
+    if (error) {
+      console.error('OLA: getSession error', error);
+      showLoginScreen();
+      return;
+    }
+
+    const session = data?.session;
+    if (session) {
+      showApp(session.user);
+      loadAll();
+    } else {
+      showLoginScreen();
+    }
+  } catch (err) {
+    clearTimeout(fallbackTimer);
+    console.error('OLA: unexpected auth error', err);
+    showLoginScreen();
+  }
+
+  // Listen for auth changes (e.g. token expiry)
+  sb.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_OUT' || !session) showLoginScreen();
+  });
+})();
+</script>
+</body>
+</html>
